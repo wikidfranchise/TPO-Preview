@@ -1,0 +1,4001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TPO Simulator · Module 1 · 3D Corridor Grid · Pecking Order Resolver</title>
+<meta name="description" content="Revive Drones LLC — TPO Beta Simulator with true 3D corridor visualization, mission state machine, and exception-layer deconfliction.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script async src="https://unpkg.com/es-module-shims@1.7.0/dist/es-module-shims.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+
+<style>
+/* =====================================================================
+   TPO Simulator · Module 1 · 3D Build
+   Revive Drones LLC · Patent-pending (USPTO 63/968,537; 63/983,173; 63/996,198)
+   ===================================================================== */
+:root {
+  --bg-0: #06070a;
+  --bg-1: #0c0e13;
+  --bg-2: #14171c;
+  --bg-3: #1c2027;
+  --line: #262b34;
+  --line-bright: #3a4150;
+  --text-0: #e8eaed;
+  --text-1: #9ca3af;
+  --text-2: #5f6672;
+  --text-3: #3f4651;
+
+  --p00: #ffffff;
+  --p0:  #ff2d3d;
+  --p1:  #ff8a00;
+  --p2:  #ffd23f;
+  --p3:  #00c2ff;
+  --p4:  #a070ff;
+  --p5:  #4ade80;
+
+  --accent: #ff8a00;
+  --signal-ok: #4ade80;
+  --signal-warn: #ffd23f;
+  --signal-crit: #ff2d3d;
+
+  --font-sans: 'IBM Plex Sans Condensed', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: 56px 1fr 28px;
+  height: 100vh;
+}
+
+/* ===== Header ===== */
+header.bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 20px;
+  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-mark {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  background: var(--bg-3);
+  border: 1px solid var(--line-bright);
+  position: relative;
+}
+.brand-mark::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  width: 4px; height: 4px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent);
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1; }
+.brand-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.brand-sub {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.status-cluster {
+  display: flex; align-items: center; gap: 24px;
+  font-family: var(--font-mono); font-size: 11px;
+}
+.status-item { display: flex; align-items: center; gap: 8px; color: var(--text-1); }
+.status-item .label { color: var(--text-2); letter-spacing: 0.1em; text-transform: uppercase; }
+.status-item .value { color: var(--text-0); }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--signal-ok);
+  box-shadow: 0 0 8px var(--signal-ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.bar-right { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.patent-refs {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-2);
+  letter-spacing: 0.06em;
+  text-align: right;
+  line-height: 1.4;
+}
+
+/* ===== Workspace ===== */
+main.workspace {
+  display: grid;
+  grid-template-columns: 280px 1fr 380px;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel {
+  background: var(--bg-1);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 5;
+}
+.panel.right { border-right: none; border-left: 1px solid var(--line); }
+.panel-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-title {
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-1);
+}
+.panel-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+}
+.panel-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+.panel-body::-webkit-scrollbar { width: 6px; }
+.panel-body::-webkit-scrollbar-track { background: var(--bg-1); }
+.panel-body::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+
+.section { margin-bottom: 22px; }
+.section-label {
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-2); margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+.btn {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-0);
+  font-family: var(--font-sans);
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.btn:hover { background: var(--bg-3); border-color: var(--line-bright); }
+.btn:active { transform: translateY(1px); }
+.btn .kbd {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--text-3); background: var(--bg-1);
+  border: 1px solid var(--line); padding: 2px 5px;
+}
+.btn.primary {
+  background: var(--bg-3);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn.primary:hover { background: var(--accent); color: var(--bg-0); }
+.btn.critical { border-color: var(--signal-crit); color: var(--signal-crit); }
+.btn.critical:hover { background: var(--signal-crit); color: var(--bg-0); }
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+.btn-row .btn { padding: 6px 8px; font-size: 10px; }
+.btn-stack { display: flex; flex-direction: column; gap: 6px; }
+
+.range-set {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-2);
+}
+.range-set .l { letter-spacing: 0.06em; }
+.range-set .v { color: var(--text-0); min-width: 36px; text-align: right; }
+.range-set input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px; background: var(--line); outline: none;
+}
+.range-set input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 10px; height: 10px;
+  background: var(--accent); cursor: pointer; border: none;
+}
+.range-set input[type=range]::-moz-range-thumb {
+  width: 10px; height: 10px;
+  background: var(--accent); cursor: pointer; border: none; border-radius: 0;
+}
+
+.tier-list { display: flex; flex-direction: column; gap: 4px; }
+.tier-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 32px;
+  align-items: center;
+  padding: 7px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  font-size: 11px; gap: 8px;
+}
+.tier-row .tier-id {
+  font-family: var(--font-mono); font-weight: 600;
+  font-size: 10px; letter-spacing: 0.05em;
+}
+.tier-row .tier-name { color: var(--text-1); font-size: 10px; }
+.tier-row .tier-count {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-2); text-align: right;
+}
+.tier-row.active { border-color: var(--line-bright); background: var(--bg-3); }
+.tier-swatch { width: 8px; height: 8px; box-shadow: 0 0 6px currentColor; }
+
+/* ===== 3D viewport ===== */
+.viewport {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse at center, #0b0e13 0%, #04050a 100%);
+}
+#three-canvas { display: block; width: 100%; height: 100%; }
+
+.overlay-corner {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-1);
+  pointer-events: none;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  z-index: 3;
+}
+.overlay-tl { top: 14px; left: 16px; }
+.overlay-tr { top: 14px; right: 16px; text-align: right; }
+.overlay-bl { bottom: 14px; left: 16px; }
+.overlay-br { bottom: 14px; right: 16px; text-align: right; }
+.overlay-label { color: var(--text-3); text-transform: uppercase; font-size: 9px; }
+.overlay-val { color: var(--text-0); }
+.overlay-accent { color: var(--accent); }
+
+.camera-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-2);
+  background: rgba(12,14,19,0.7);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.85;
+}
+.camera-hint b { color: var(--accent); font-weight: 600; }
+
+/* ===== Event log ===== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+}
+.stat-cell { background: var(--bg-2); padding: 10px 12px; }
+.stat-label {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--text-2);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-family: var(--font-mono); font-size: 18px;
+  font-weight: 600; color: var(--text-0); line-height: 1;
+}
+.stat-unit { font-size: 10px; color: var(--text-2); margin-left: 3px; font-weight: 400; }
+
+.log-stream {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-1);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.log-entry {
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-left: 2px solid var(--line-bright);
+  animation: logEnter 0.3s ease-out;
+}
+@keyframes logEnter {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.log-entry.crit { border-left-color: var(--signal-crit); }
+.log-entry.warn { border-left-color: var(--signal-warn); }
+.log-entry.info { border-left-color: var(--p3); }
+.log-entry.ledger { border-left-color: var(--accent); background: rgba(255,138,0,0.03); }
+.log-entry.mission { border-left-color: var(--p2); }
+
+.log-head {
+  display: flex; justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 9px;
+}
+.log-time { color: var(--text-3); }
+.log-type {
+  letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 600; color: var(--text-1);
+}
+.log-type.crit { color: var(--signal-crit); }
+.log-type.warn { color: var(--signal-warn); }
+.log-type.info { color: var(--p3); }
+.log-type.ledger { color: var(--accent); }
+.log-type.mission { color: var(--p2); }
+.log-body { color: var(--text-1); font-size: 10px; }
+.log-row { display: flex; gap: 6px; }
+.log-key { color: var(--text-3); min-width: 56px; }
+.log-val { color: var(--text-0); word-break: break-all; }
+.log-sig { color: var(--text-3); font-size: 9px; margin-top: 4px; }
+
+/* ===== Footer ===== */
+footer.bar {
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+  z-index: 10;
+}
+footer .right { color: var(--text-2); }
+
+/* ===== Conflict alert HUD ===== */
+.conflict-hud {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(60,8,12,0.96) 0%, rgba(20,4,6,0.94) 100%);
+  border: 2px solid var(--signal-crit);
+  padding: 12px 20px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--signal-crit);
+  letter-spacing: 0.08em;
+  z-index: 7;
+  pointer-events: none;
+  min-width: 440px;
+  max-width: 620px;
+  display: none;
+  box-shadow: 0 6px 36px rgba(255,45,61,0.5), 0 0 24px rgba(255,45,61,0.35) inset;
+}
+.conflict-hud.visible {
+  display: block;
+  animation: conflictBannerPulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes conflictBannerPulse {
+  from { box-shadow: 0 6px 32px rgba(255,45,61,0.4), 0 0 18px rgba(255,45,61,0.25) inset; }
+  to   { box-shadow: 0 6px 48px rgba(255,45,61,0.75), 0 0 36px rgba(255,45,61,0.5) inset; }
+}
+.ch-header {
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  text-align: center;
+  color: #ff6b7a;
+}
+.ch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ch-entry {
+  background: rgba(0,0,0,0.5);
+  border-left: 2px solid var(--signal-crit);
+  padding: 6px 9px;
+  line-height: 1.45;
+}
+.ch-entry-pair {
+  font-size: 10px;
+  color: var(--text-0);
+  margin-bottom: 2px;
+}
+.ch-entry-pair b { color: #ffb0b8; font-weight: 600; }
+.ch-entry-cause {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--signal-crit);
+  text-transform: uppercase;
+}
+.ch-entry-cmd {
+  font-size: 9px;
+  color: var(--accent);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  margin-top: 1px;
+}
+.ch-entry-time {
+  float: right;
+  font-size: 8px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+}
+
+/* ===== Base info HUD ===== */
+.base-hud {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  background: linear-gradient(180deg, rgba(20,23,28,0.96) 0%, rgba(8,9,11,0.96) 100%);
+  border: 1px solid var(--accent);
+  padding: 14px 16px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-1);
+  letter-spacing: 0.06em;
+  z-index: 5;
+  pointer-events: none;
+  width: 360px;
+  display: none;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.6), 0 0 18px rgba(255,138,0,0.22);
+}
+.base-hud.visible { display: block; }
+
+.geofence-hud {
+  position: absolute;
+  bottom: 200px;
+  right: 16px;
+  background: linear-gradient(180deg, rgba(28,18,18,0.96) 0%, rgba(11,8,8,0.96) 100%);
+  border: 1px solid #ff5530;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-1);
+  letter-spacing: 0.06em;
+  z-index: 5;
+  pointer-events: none;
+  width: 320px;
+  box-shadow: 0 6px 32px rgba(0,0,0,0.6), 0 0 18px rgba(255,85,48,0.32);
+}
+.gf-hud-title { font-size: 12px; font-weight: 700; color: #ff7355; letter-spacing: 0.14em; }
+.gf-hud-name  { font-family: var(--font-sans); font-size: 13px; color: var(--text-0); margin-bottom: 4px; }
+.gf-hud-type  { font-size: 9px; color: #ffb09e; letter-spacing: 0.18em; margin-bottom: 8px; }
+.gf-hud-row   { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dotted #4a2a26; }
+.gf-hud-row span:first-child { color: var(--text-2); }
+.gf-hud-row span:last-child  { color: var(--text-0); font-weight: 600; }
+.gf-hud-foot  { font-size: 8px; color: #ff7355; letter-spacing: 0.18em; margin-top: 8px; opacity: 0.8; }
+.bh-id {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.14em;
+  margin-bottom: 2px;
+}
+.bh-name {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-0);
+  margin-bottom: 10px;
+  letter-spacing: 0.04em;
+}
+.bh-row { display: flex; gap: 6px; margin-bottom: 4px; }
+.bh-k { color: var(--text-3); min-width: 70px; }
+.bh-v { color: var(--text-0); flex: 1; }
+.bh-divider {
+  margin: 12px 0 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+}
+.bh-blades {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.bh-blade {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(28,32,39,0.7);
+  border-left: 2px solid var(--text-3);
+  align-items: start;
+  line-height: 1.4;
+}
+.bh-blade.active {
+  border-left-color: var(--accent);
+  background: rgba(255,138,0,0.12);
+  box-shadow: 0 0 10px rgba(255,138,0,0.18);
+}
+.bh-blade-id {
+  font-weight: 600;
+  color: var(--text-0);
+  font-size: 10px;
+}
+.bh-blade.active .bh-blade-id { color: var(--accent); }
+.bh-blade-info { font-size: 10px; }
+.bh-blade-tenant { color: var(--text-0); font-weight: 500; }
+.bh-blade-mission { color: var(--text-2); font-size: 9px; margin-top: 1px; }
+.bh-blade-active-tag {
+  display: inline-block;
+  font-size: 8px;
+  color: var(--accent);
+  background: rgba(255,138,0,0.18);
+  padding: 1px 5px;
+  margin-left: 4px;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+.bh-status {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  font-size: 9px;
+}
+.bh-status-k { color: var(--text-3); }
+.bh-status-v { color: var(--text-0); }
+.bh-hint {
+  margin-top: 6px;
+  font-size: 8px;
+  color: var(--text-3);
+  letter-spacing: 0.06em;
+}
+
+/* ===== Click-selection highlight ===== */
+.log-entry.selected {
+  background: linear-gradient(90deg, rgba(255,138,0,0.22) 0%, rgba(255,138,0,0.06) 60%, var(--bg-2) 100%);
+  border-left-color: var(--accent);
+  border-left-width: 3px;
+  box-shadow: 0 0 18px rgba(255,138,0,0.18);
+  position: relative;
+}
+.log-entry.selected::before {
+  content: '◆';
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  color: var(--accent);
+  font-size: 8px;
+  letter-spacing: 0;
+}
+
+.selection-hud {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(8,9,11,0.92);
+  border: 1px solid var(--accent);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-1);
+  letter-spacing: 0.06em;
+  z-index: 4;
+  pointer-events: none;
+  min-width: 280px;
+  display: none;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 12px rgba(255,138,0,0.15);
+}
+.selection-hud.visible { display: block; }
+.selection-hud .sel-uid {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.selection-hud .sel-row {
+  display: flex; gap: 6px; margin-top: 2px;
+}
+.selection-hud .sel-k { color: var(--text-3); min-width: 60px; }
+.selection-hud .sel-v { color: var(--text-0); }
+.selection-hud .sel-hint {
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--text-3);
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+/* ===== Loading splash ===== */
+.splash {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-0);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+  transition: opacity 0.6s ease;
+}
+.splash.hidden { opacity: 0; pointer-events: none; }
+.splash-inner {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.splash-mark {
+  width: 60px; height: 60px;
+  border: 1px solid var(--accent);
+  margin: 0 auto 20px;
+  position: relative;
+  transform: rotate(45deg);
+  animation: splashSpin 3s ease-in-out infinite;
+}
+.splash-mark::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  background: var(--accent);
+  opacity: 0.6;
+}
+@keyframes splashSpin {
+  0%,100% { transform: rotate(45deg) scale(1); opacity: 0.8; }
+  50% { transform: rotate(225deg) scale(1.1); opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================== -->
+<!--  ACCESS GATE - Simple password barrier for friends-and-family   -->
+<!--  preview. NOT cryptographically secure; meant to keep search    -->
+<!--  engines and casual browsing out. Change the password below.   -->
+<!-- ============================================================== -->
+<div id="access-gate" style="
+    position:fixed; inset:0; z-index:999999;
+    background:radial-gradient(ellipse at center, #0e1116 0%, #04060a 80%);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Sans Condensed', 'IBM Plex Sans', sans-serif;
+    color:#e8eaed;">
+  <div style="
+      width:420px; max-width:90vw;
+      background:linear-gradient(180deg, rgba(20,23,28,0.96), rgba(8,9,11,0.96));
+      border:1px solid #ff8a00; padding:32px 36px;
+      box-shadow:0 12px 60px rgba(0,0,0,0.7), 0 0 36px rgba(255,138,0,0.25);">
+    <div style="font-size:11px; letter-spacing:0.24em; color:#ff8a00; margin-bottom:6px;">TRANSPARENT PRIORITY OPERATIONS</div>
+    <div style="font-size:22px; font-weight:700; letter-spacing:0.04em; margin-bottom:4px;">Beta Simulator · Preview Access</div>
+    <div style="font-size:11px; color:#9aa0a6; letter-spacing:0.06em; margin-bottom:24px;">REVIVE DRONES LLC · CONFIDENTIAL · NOT FOR REDISTRIBUTION</div>
+    <div style="font-size:12px; color:#c8ccd0; margin-bottom:14px; line-height:1.55;">
+      This preview is shared by invitation. Please enter the access code provided to you.
+    </div>
+    <input id="access-pw" type="password" autofocus
+      placeholder="access code"
+      style="width:100%; padding:11px 14px; font-family:'JetBrains Mono', monospace;
+             font-size:14px; background:#0a0c10; border:1px solid #2a2f37;
+             color:#e8eaed; outline:none; letter-spacing:0.08em; box-sizing:border-box;"/>
+    <button id="access-btn" style="
+      width:100%; margin-top:14px; padding:11px;
+      background:#ff8a00; color:#000; border:none; cursor:pointer;
+      font-family:'IBM Plex Sans Condensed', sans-serif;
+      font-size:13px; font-weight:700; letter-spacing:0.14em;">UNLOCK PREVIEW</button>
+    <div id="access-err" style="margin-top:12px; font-size:11px; color:#ff6b5a;
+         letter-spacing:0.06em; min-height:14px;"></div>
+    <div style="margin-top:22px; padding-top:14px; border-top:1px solid #222831;
+         font-size:9px; color:#6a7078; letter-spacing:0.14em; line-height:1.6;">
+      USPTO 63/968,537 · 63/983,173 · 63/996,198<br/>
+      FAA-2025-1908-3551 · FCC DOCKET 26-74
+    </div>
+  </div>
+</div>
+
+<script>
+  // Access password — change this string to set a new code.
+  // Friends use this code to enter. localStorage remembers them so they
+  // don't have to re-enter on reload.
+  const TPO_ACCESS_PW = "PECK-2026-DEMO";
+
+  (function() {
+    const gate = document.getElementById('access-gate');
+    const input = document.getElementById('access-pw');
+    const btn = document.getElementById('access-btn');
+    const err = document.getElementById('access-err');
+
+    if (localStorage.getItem('tpo_unlocked') === 'yes') {
+      gate.remove();
+      return;
+    }
+    function tryUnlock() {
+      if (input.value === TPO_ACCESS_PW) {
+        localStorage.setItem('tpo_unlocked', 'yes');
+        gate.style.transition = 'opacity 0.4s ease';
+        gate.style.opacity = '0';
+        setTimeout(() => gate.remove(), 420);
+      } else {
+        err.textContent = 'Access code not recognized. Try again.';
+        input.value = '';
+        input.focus();
+      }
+    }
+    btn.addEventListener('click', tryUnlock);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
+  })();
+</script>
+
+<div class="splash" id="splash">
+  <div class="splash-inner">
+    <div class="splash-mark"></div>
+    <div>TPO · Pecking Order Protocol</div>
+    <div style="margin-top:8px; color:var(--text-3); font-size:9px;">Initializing 3D corridor grid · Sovereign Node BLADE-FT-RANCH-01</div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="bar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <div class="brand-title">TPO · Pecking Order Protocol</div>
+        <div class="brand-sub">Beta · Module 1 · 3D Corridor Grid</div>
+      </div>
+    </div>
+    <div class="status-cluster">
+      <div class="status-item">
+        <div class="status-dot"></div>
+        <span class="label">Reg</span>
+        <span class="value">FT-RANCH</span>
+      </div>
+      <div class="status-item">
+        <span class="label">T+</span>
+        <span class="value" id="simTime">00:00:00</span>
+      </div>
+      <div class="status-item">
+        <span class="label">Cadence</span>
+        <span class="value">10.0 Hz</span>
+      </div>
+    </div>
+    <div class="bar-right">
+      <div class="patent-refs">
+        REVIVE DRONES LLC · PATENT PENDING<br>
+        USPTO 63/968,537 · 63/983,173 · 63/996,198
+      </div>
+    </div>
+  </header>
+
+  <!-- WORKSPACE -->
+  <main class="workspace">
+
+    <!-- LEFT — CONTROL -->
+    <aside class="panel left">
+      <div class="panel-header">
+        <span class="panel-title">Control</span>
+        <span class="panel-meta">REGISTRAR</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="section">
+          <div class="section-label">Simulation</div>
+          <div class="btn-stack">
+            <button class="btn primary" id="btnPlay">
+              <span id="playLabel">Pause</span>
+              <span class="kbd">SPACE</span>
+            </button>
+            <button class="btn" id="btnReset">
+              <span>Reset Airspace</span>
+              <span class="kbd">R</span>
+            </button>
+            <button class="btn" id="btnView">
+              <span>Aerial View</span>
+              <span class="kbd">V</span>
+            </button>
+            <button class="btn" id="btnGround">
+              <span>Ground Eye View</span>
+              <span class="kbd">G</span>
+            </button>
+          </div>
+          <div class="range-set" style="margin-top: 12px;">
+            <span class="l">SPEED</span>
+            <input type="range" id="speedSlider" min="0.25" max="4" step="0.25" value="1">
+            <span class="v" id="speedValue">1.00×</span>
+          </div>
+          <div class="range-set">
+            <span class="l">SPAWN</span>
+            <input type="range" id="spawnSlider" min="2" max="12" step="1" value="6">
+            <span class="v" id="spawnValue">1/6s</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-label">Mission Inject</div>
+          <div class="btn-stack">
+            <button class="btn" data-spawn="P1">
+              <span style="color:var(--p1)">P1 LCR Narcan Run</span>
+              <span class="kbd">L</span>
+            </button>
+            <button class="btn" data-spawn="P2">
+              <span style="color:var(--p2)">P2 Health Logistics</span>
+            </button>
+            <button class="btn" data-spawn="P3">
+              <span style="color:var(--p3)">P3 Surveillance</span>
+            </button>
+            <button class="btn" data-spawn="P4">
+              <span style="color:var(--p4)">P4 Commercial</span>
+            </button>
+            <button class="btn" data-spawn="P5">
+              <span style="color:var(--p5)">P5 Recreational</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-label">Exception Events</div>
+          <div class="btn-stack">
+            <button class="btn critical" id="injectP0">
+              <span>P0 Manned Aircraft</span>
+              <span class="kbd">M</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-label">Active Tiers</div>
+          <div class="tier-list" id="tierList"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-label">Active Operators</div>
+          <div class="tier-list" id="operatorList"></div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- CENTER — 3D VIEWPORT -->
+    <section class="viewport">
+      <canvas id="three-canvas"></canvas>
+
+      <div class="camera-hint">
+        <b>DRAG</b> rotate · <b>SCROLL</b> zoom · <b>SHIFT+DRAG</b> pan · <b>CLICK</b> drone or base
+      </div>
+
+      <div class="selection-hud" id="selectionHud">
+        <div class="sel-uid" id="selUid">—</div>
+        <div class="sel-row"><span class="sel-k">operator</span><span class="sel-v" id="selOperator">—</span></div>
+        <div class="sel-row"><span class="sel-k">tier</span><span class="sel-v" id="selTier">—</span></div>
+        <div class="sel-row"><span class="sel-k">peck tag</span><span class="sel-v" id="selPeckTag">—</span></div>
+        <div class="sel-row"><span class="sel-k">origin</span><span class="sel-v" id="selOrigin">—</span></div>
+        <div class="sel-row"><span class="sel-k">dest</span><span class="sel-v" id="selDest">—</span></div>
+        <div class="sel-row"><span class="sel-k">state</span><span class="sel-v" id="selState">—</span></div>
+        <div class="sel-hint">click empty space to deselect · ledger entries highlighted at right</div>
+      </div>
+
+      <div class="conflict-hud" id="conflictHud" aria-live="polite">
+        <div class="ch-header">⚠ Airspace Exception · Conflict Resolved by Registrar</div>
+        <div class="ch-list" id="chList"></div>
+      </div>
+
+      <div class="base-hud" id="baseHud">
+        <div class="bh-id" id="bhId">—</div>
+        <div class="bh-name" id="bhName">—</div>
+        <div class="bh-row"><span class="bh-k">address</span><span class="bh-v" id="bhAddress">—</span></div>
+        <div class="bh-row"><span class="bh-k">enclosure</span><span class="bh-v" id="bhEnc">—</span></div>
+        <div class="bh-row"><span class="bh-k">height</span><span class="bh-v" id="bhHeight">—</span></div>
+        <div class="bh-row"><span class="bh-k">coords</span><span class="bh-v" id="bhCoords">—</span></div>
+        <div class="bh-divider">Blade Tenants · LCR Leases</div>
+        <div class="bh-blades" id="bhBlades"></div>
+        <div class="bh-status">
+          <span class="bh-status-k">status</span>
+          <span class="bh-status-v" id="bhStatus">—</span>
+        </div>
+        <div class="bh-hint">click empty space to deselect</div>
+      </div>
+
+      <div class="geofence-hud" id="geofenceHud" style="display:none"></div>
+
+      <div class="overlay-corner overlay-tl">
+        <div><span class="overlay-label">Airspace</span> <span class="overlay-val">THE LOW · &lt; 620 FT AGL</span></div>
+        <div><span class="overlay-label">Grid</span> <span class="overlay-val">8×8 CORRIDORS · 500 FT SPACING</span></div>
+        <div><span class="overlay-label">Mode</span> <span class="overlay-accent">ZERO-CONFLICT DESIGN</span></div>
+      </div>
+
+      <div class="overlay-corner overlay-tr">
+        <div><span class="overlay-label">Participants</span> <span class="overlay-val" id="ovParticipants">0</span></div>
+        <div><span class="overlay-label">Conflicts</span> <span class="overlay-val" id="ovConflicts">0</span></div>
+        <div><span class="overlay-label">Resolves</span> <span class="overlay-accent" id="ovResolves">0</span></div>
+      </div>
+
+      <div class="overlay-corner overlay-bl">
+        <div><span class="overlay-label">Cmd Latency</span> <span class="overlay-val" id="ovLatency">0.0 ms</span></div>
+        <div><span class="overlay-label">Ledger Depth</span> <span class="overlay-val" id="ovLedger">0</span></div>
+        <div><span class="overlay-label">Missions Run</span> <span class="overlay-val" id="ovMissions">0</span></div>
+      </div>
+
+      <div class="overlay-corner overlay-br">
+        <div><span class="overlay-label">Interconnect</span> <span class="overlay-val">T1 BLADE · T2 900MHz · T3 LEO</span></div>
+        <div><span class="overlay-label">Signing</span> <span class="overlay-val">Ed25519 · DEMO ONLY</span></div>
+      </div>
+    </section>
+
+    <!-- RIGHT — EVENT LOG -->
+    <aside class="panel right">
+      <div class="panel-header">
+        <span class="panel-title">Immutable Ledger</span>
+        <span class="panel-meta">LIVE STREAM</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <div class="stat-label">Avg Resolve</div>
+            <div class="stat-value" id="statResolve">0.0<span class="stat-unit">ms</span></div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Yield Cmds</div>
+            <div class="stat-value" id="statCmds">0</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Mission Compl.</div>
+            <div class="stat-value" id="statComplete">0</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">In Flight</div>
+            <div class="stat-value" id="statInflight">0</div>
+          </div>
+        </div>
+
+        <div class="log-stream" id="logStream"></div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bar">
+    <span>TPO BETA · MODULE 1 · 3D BUILD · NON-PRODUCTION · DEMONSTRATION ONLY</span>
+    <span class="right">REVIVE DRONES LLC · john@revivedrones.com</span>
+  </footer>
+
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================================================================
+   TPO Simulator · Module 1 · 3D Build
+   ----------------------------------------------------------------------------
+   This module demonstrates the 7-tier Pecking Order Protocol with true 3D
+   corridor-grid visualization, mission state machine (origin → destination →
+   hover → return), and exception-layer deconfliction, as described in USPTO
+   provisionals 63/968,537, 63/983,173, and 63/996,198 (Revive Drones LLC).
+
+   ARCHITECTURAL PRINCIPLE — ZERO-CONFLICT DESIGN
+   ----------------------------------------------
+   TPO does not minimize close encounters. It eliminates the geometry that
+   produces them. Corridors are spaced 500 ft apart. Drones in adjacent lanes
+   are well outside visual encounter range. Vertical altitude bands separate
+   priority tiers by ~60 ft. In normal operation, drones never see each other.
+
+   The deconfliction engine is the EXCEPTION layer. It catches failure modes
+   (errant drone, manned aircraft override, LCR direct-line, captured Peck
+   Tag). In normal operation the yield counter stays at zero.
+
+   PATENT CLAIM MAPPING:
+     Tier system           — Claim 1   (Pecking Order assignment)
+     Sovereign Node auth   — Claim 3   (Blade Tier 1 local authority)
+     Peck Tag identity     — Claim 7   (silicon-bound private key)
+     Corridor routing      — Claim 8   (Registrar lane assignment)
+     Yield command set     — Claim 12  (DIVERT / DESCEND / DISENGAGE / DISTANCE)
+     Flight plan issuance  — Claim 13  (origin-to-destination plan registration)
+     Many-to-many resolve  — Claim 18  (≤10ms many-to-many computation)
+     Immutable ledger      — Claim 22  (append-only signed audit trail)
+     Cadence control       — Claim 28  (≥10 Hz telemetry refresh)
+     Adaptive cadence      — Claim 29  (cryptographically-signed cadence ctrl)
+
+   SECURITY DISCLAIMER:
+   This simulator uses DEMO cryptographic primitives only. Public keys and
+   signatures shown are randomly-generated placeholders. Production TPO requires
+   hardware-bound private keys, real signing, and security audit by credentialed
+   software engineering. This file is NOT production code.
+   ============================================================================ */
+
+// ===== Tier definitions (Claim 1) ==========================================
+// Each tier owns a full altitude BAND, not a single altitude. Within each
+// tier, the band is divided into 4 directional slots (NS north, NS south,
+// EW east, EW west) — see getDirectionalAltitude() below. This guarantees
+// no two drones in the same tier share an altitude unless they're going
+// the same direction on the same axis (handled by lane reservation +
+// trailing separation).
+// Tier altitude bands — restructured per architect proposal:
+//   • Commercial (P4) gets the entire 50-400 ft band — 7 slots × 50 ft.
+//     This is the bulk of traffic (Amazon, UPS, FedEx, Wing, Matternet).
+//   • P3 Law Enforcement is altitude-flexible: it can occupy any commercial
+//     slot or any altitude needed for the mission. Yields only to P0/P00/P1.
+//   • P5 Recreational defaults to the lowest skies (30-50 ft) but can apply
+//     for commercial slots with a permit (science, education, military).
+//   • P2 Surveillance and P1 LCR carved cleanly above commercial.
+//   • P0 / P00 Manned + Dignitary unchanged.
+//
+// Defensible separation margins:
+//   • Same axis, different slots = 100 ft vertical (above all wind/GPS error)
+//   • Perpendicular axes at intersection = 50 ft vertical (right-angle crossing)
+//   • Same slot, opposite direction = 500 ft horizontal (paired lanes)
+//   • Same slot, same direction = 400 ft trailing (existing logic)
+const TIERS = [
+  { id: 'P00', name: 'POTUS / War Mission',       color: 0xffffff, rank: 0, altLow: 1500, altHigh: 1600 },
+  { id: 'P0',  name: 'Manned Aircraft',           color: 0xff2d3d, rank: 1, altLow:  900, altHigh: 1500 },
+  { id: 'P1',  name: 'LCR · Life Critical',       color: 0xff8a00, rank: 2, altLow:  520, altHigh:  600 },
+  { id: 'P2',  name: 'Surveillance',              color: 0xffd23f, rank: 3, altLow:  430, altHigh:  490 },
+  { id: 'P3',  name: 'Law Enforcement',           color: 0x00c2ff, rank: 4, altLow:   50, altHigh:  400 },
+  { id: 'P4',  name: 'Commercial / Utility',      color: 0xa070ff, rank: 5, altLow:   50, altHigh:  400 },
+  { id: 'P5',  name: 'Recreational / Scientific', color: 0x4ade80, rank: 6, altLow:   30, altHigh:   50 }
+];
+
+// Commercial slot altitudes — 7 slots × 50 ft within 50-400 ft band.
+// NS-axis traffic uses odd slots (50, 150, 250, 350); EW-axis uses even
+// slots (100, 200, 300). Alternating axis gives 50 ft vertical separation
+// between perpendicular drones at intersection crossings.
+const COMMERCIAL_NS_SLOTS = [50, 150, 250, 350];   // 4 NS altitudes
+const COMMERCIAL_EW_SLOTS = [100, 200, 300];        // 3 EW altitudes
+// Derived: tier center (used for tier-band visualization & off-corridor altitudes)
+for (const t of TIERS) t.altCenter = (t.altLow + t.altHigh) / 2;
+const TIER_MAP = Object.fromEntries(TIERS.map(t => [t.id, t]));
+
+// ===== Directional altitude assignment ======================================
+// Within each tier band, 4 distinct altitude slots are reserved by (axis, dir):
+//   • slot 0 (top):     NS northbound (dir > 0)
+//   • slot 1:           NS southbound (dir < 0)
+//   • slot 2:           EW eastbound  (dir > 0)
+//   • slot 3 (bottom):  EW westbound  (dir < 0)
+// Within a tier, the only way two drones share an altitude is same axis +
+// same direction — which means either same lane (trailing handles it) or
+// different lane (500 ft lateral separation).
+// Altitude assignment per tier and lane:
+//   • P4 Commercial: 7-slot system. NS lanes pick from {50,150,250,350};
+//     EW lanes pick from {100,200,300}. Lane index spreads across slots so
+//     adjacent lanes use different altitudes — capacity multiplier vs the
+//     old 4-slot scheme.
+//   • P3 Law Enforcement: flexible — picks any commercial slot dynamically.
+//     For simulator simplicity, defaults to mid-band (250 NS / 200 EW).
+//   • P5 Recreational: defaults to lowest band (30-50 ft), single slot at 40.
+//   • P1 LCR: 80 ft band 520-600; NS at 580, EW at 540 (40 ft sep).
+//   • P2 Surveillance: 60 ft band 430-490; NS at 470, EW at 440.
+function getDirectionalAltitude(tierId, axis, dir, laneIdx) {
+  if (tierId === 'P4' || tierId === 'P3') {
+    // Commercial slot picking — lane index determines slot, alternating axis
+    if (axis === 'NS') {
+      const slotIdx = Math.floor((laneIdx || 0) / 2) % COMMERCIAL_NS_SLOTS.length;
+      return COMMERCIAL_NS_SLOTS[slotIdx];
+    } else {
+      const slotIdx = Math.floor((laneIdx || 0) / 2) % COMMERCIAL_EW_SLOTS.length;
+      return COMMERCIAL_EW_SLOTS[slotIdx];
+    }
+  }
+  if (tierId === 'P5') {
+    // P5 defaults to lowest skies — two axis slots below commercial 50ft floor.
+    // NS at 45 ft, EW at 25 ft. 20 ft vertical separation at intersections,
+    // both below the commercial layer to keep recreational out of the way.
+    return (axis === 'NS') ? 45 : 25;
+  }
+  if (tierId === 'P1') {
+    return (axis === 'NS') ? 580 : 540;   // LCR — 40 ft sep within band
+  }
+  if (tierId === 'P2') {
+    return (axis === 'NS') ? 470 : 440;   // Surveillance — 30 ft sep within band
+  }
+  // P0, P00 — manned aircraft use forcePlan altitudes, this is fallback only
+  const tier = TIER_MAP[tierId];
+  return tier ? (tier.altLow + tier.altHigh) / 2 : 200;
+}
+
+// ===== Brand / Operator registry ============================================
+// TPO governs ALL of The Low — not just Revive Drones' fleet. Real-world
+// traffic includes Amazon Prime Air, Wing, UPS Flight Forward, Zipline,
+// Skydio, Axon, Matternet, etc. Each drone has:
+//   • UID (permanent serial, like AMZ-D-44782) — set at manufacture
+//   • Brand (commercial operator)
+//   • Peck Tag (cryptographic credential issued by Registrar at flight-plan
+//     registration — silicon-bound private key per Claim 7)
+// The Sovereign Node Registrar issues flight plans for all participants
+// regardless of operator. TPO is the protocol; brands are the operators.
+const BRANDS = {
+  'RD':  { name: 'Revive Drones · LCR',     color: 0xff8a00, tpo: true,  tierPref: ['P1'] },
+  'ZIP': { name: 'Zipline · Medical LCR',   color: 0xff5577, tpo: false, tierPref: ['P1'] },
+  'SKY': { name: 'Skydio · Civ Surveil',    color: 0xd0d8ff, tpo: false, tierPref: ['P2'] },
+  'FBI': { name: 'FBI · Aerial Surveil',    color: 0xa6a6cc, tpo: false, tierPref: ['P2'] },
+  'AXN': { name: 'Axon · LE Operations',    color: 0xe8e8e8, tpo: false, tierPref: ['P3'] },
+  'CBP': { name: 'CBP · Border Patrol',     color: 0x6688aa, tpo: false, tierPref: ['P3'] },
+  'AMZ': { name: 'Amazon Prime Air',        color: 0x00a4ff, tpo: false, tierPref: ['P4'] },
+  'UPS': { name: 'UPS Flight Fwd',          color: 0xc89020, tpo: false, tierPref: ['P4'] },
+  'WNG': { name: 'Wing · Alphabet',         color: 0x44d9b1, tpo: false, tierPref: ['P4'] },
+  'MTR': { name: 'Matternet · Logistics',   color: 0xa070ff, tpo: false, tierPref: ['P4'] },
+  'UCI': { name: 'UCI · Research',          color: 0x4ade80, tpo: false, tierPref: ['P5'] },
+  'JPL': { name: 'JPL · Atmospheric Sci',   color: 0x8fd373, tpo: false, tierPref: ['P5'] }
+};
+
+// External operator origins — virtual offscreen depots around the airspace
+// perimeter. External drones enter from these points and return to them.
+// These are NOT TPO infrastructure — they're third-party operator hubs.
+const EXTERNAL_OPERATOR_ORIGINS = [
+  { brand: 'ZIP', id: 'ZIP-HOAG-1',  name: 'Zipline · Hoag Memorial',   x: -2400, y: -1800 },
+  { brand: 'SKY', id: 'SKY-PRIV-1',  name: 'Skydio · Private Site',     x:  2700, y:     0 },
+  { brand: 'FBI', id: 'FBI-LA-FO',   name: 'FBI · LA Field Office',     x:     0, y:  2700 },
+  { brand: 'AXN', id: 'AXN-OCSO-2',  name: 'Axon · OCSO Air Support',   x: -2700, y:     0 },
+  { brand: 'CBP', id: 'CBP-SAN-1',   name: 'CBP · San Diego Sector',    x:  1800, y: -2400 },
+  { brand: 'AMZ', id: 'AMZ-LB-DC4',  name: 'Amazon · Long Beach DC',    x:  2400, y: -1800 },
+  { brand: 'UPS', id: 'UPS-LAX-HUB', name: 'UPS · LAX Hub',             x:  2400, y:  1800 },
+  { brand: 'WNG', id: 'WNG-RVS-1',   name: 'Wing · Riverside',          x: -2400, y:  1800 },
+  { brand: 'MTR', id: 'MTR-UCI-1',   name: 'Matternet · UCI Medical',   x:     0, y: -2700 },
+  { brand: 'UCI', id: 'UCI-RES-1',   name: 'UCI · Research Hangar',     x: -2200, y:  2400 },
+  { brand: 'JPL', id: 'JPL-PSDN-1',  name: 'JPL · Pasadena Lab',        x:  2200, y:  2400 }
+];
+
+// UID counter per brand — seeded with a realistic-looking starting number
+const BRAND_UID_COUNTERS = Object.fromEntries(
+  Object.keys(BRANDS).map(k => [k, 10000 + Math.floor(Math.random() * 80000)])
+);
+function nextUID(brandKey) {
+  return brandKey + '-D-' + String(BRAND_UID_COUNTERS[brandKey]++).padStart(5, '0');
+}
+
+// ===== Airspace + Corridor structure (Claims 8, 13) ========================
+// 4000 ft × 4000 ft viewport centered on John Wayne Airport (KSNA).
+// TPO bases are positioned as a tight cluster around JWA for demo visibility;
+// in the real deployment each base is at the OC location named below.
+const AIRSPACE = {
+  HALF_WIDTH_FT: 2000,
+  ALT_CEILING:   620,
+  CORRIDOR_SPACING_FT: 500,
+  CORRIDOR_COUNT: 8,
+  LANE_WIDTH_FT: 80,
+  NS_EW_ALT_OFFSET: 25
+};
+
+// Generate corridor positions (8 lines per axis, symmetric around origin)
+function makeCorridorPositions() {
+  const positions = [];
+  const half = (AIRSPACE.CORRIDOR_COUNT - 1) / 2;
+  for (let i = 0; i < AIRSPACE.CORRIDOR_COUNT; i++) {
+    positions.push((i - half) * AIRSPACE.CORRIDOR_SPACING_FT);
+  }
+  return positions;
+}
+const CORRIDOR_POS = makeCorridorPositions();
+
+// NS corridors carry traffic in alternating ±Y direction
+const NS_LANES = CORRIDOR_POS.map((x, i) => ({
+  x, dir: (i % 2 === 0) ? +1 : -1, axis: 'NS', idx: i,
+  label: `NS-${i + 1}`
+}));
+const EW_LANES = CORRIDOR_POS.map((y, i) => ({
+  y, dir: (i % 2 === 0) ? -1 : +1, axis: 'EW', idx: i,
+  label: `EW-${i + 1}`
+}));
+
+// ===== Lane reservation system (ATC-style flight-plan scheduling) ==========
+// The Registrar tracks recent corridor assignments to prevent bunching. When
+// a flight plan is issued, the chosen lane is reserved for LANE_RESERVATION_MS.
+// Subsequent flight plans must pick a different lane until that reservation
+// expires. This is the air-traffic-control discipline that keeps the system
+// from issuing multiple drones onto the same corridor segment.
+const LANE_RESERVATIONS = {};                  // lane.label → last reservation timestamp
+const LANE_RESERVATION_MS = 50000;             // 50 sec spacing per lane — drones disperse across lane set
+const DESTINATION_MIN_SEPARATION_FT = 1200;
+const DESTINATION_MIN_ACCEPT_FT = 900;
+const TIER_LANE_CONFLICT_PENALTY = 6000;       // strongly discourage same-lane same-tier
+const RECENT_RESERVATION_PENALTY = 8000;       // strongly discourage same-lane back-to-back
+
+// Recent route history — last 12 (NS lane, EW lane) pairs chosen.
+// Heavy penalty for picking a pair recently used so traffic genuinely spreads.
+const RECENT_ROUTES = [];
+const RECENT_ROUTE_DEPTH = 12;
+const RECENT_ROUTE_PENALTY = 4000;
+
+// Snapshot who's currently cruising on each lane (by tier).
+// A drone is "currently on" a lane if its active waypoint references that lane.
+function getLaneOccupantTiers(laneLabel, excludeTierId) {
+  const tiers = new Set();
+  for (const d of state.drones) {
+    if (d._removed) continue;
+    if (!d._plan || d._waypointIdx == null) continue;
+    const wp = d._plan[d._waypointIdx];
+    if (!wp || wp.lane !== laneLabel) continue;
+    if (d.tier.id !== excludeTierId) tiers.add(d.tier.id);
+  }
+  return tiers;
+}
+
+const GEOFENCE_LANE_BLOCK_PENALTY = 999999;    // hard-block lanes that cross the airport
+
+function pickAvailableLane(axis, targetCoord, tierId) {
+  const lanes = axis === 'NS' ? NS_LANES : EW_LANES;
+  const now = state.simTimeMs;
+
+  const scored = lanes.map(lane => {
+    const coord = axis === 'NS' ? lane.x : lane.y;
+    const dist = Math.abs(coord - targetCoord);
+    const otherTiers = getLaneOccupantTiers(lane.label, tierId).size;
+    const last = LANE_RESERVATIONS[lane.label] || -999999;
+    const recent = (now - last < LANE_RESERVATION_MS) ? 1 : 0;
+    // Geofence: lanes that pass through the airport are HARD-BLOCKED for
+    // P1-P5 drone traffic. Only P0 manned aircraft (forcePlan) use them.
+    const geoBlocked = laneIntersectsGeofence(lane, axis) ? 1 : 0;
+    const score = dist
+      + otherTiers * TIER_LANE_CONFLICT_PENALTY
+      + recent * RECENT_RESERVATION_PENALTY
+      + geoBlocked * GEOFENCE_LANE_BLOCK_PENALTY;
+    return { lane, score };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  const picked = scored[0].lane;
+  LANE_RESERVATIONS[picked.label] = now;
+  return picked;
+}
+
+function pickFreeDestination(originX, originY) {
+  // Registrar picks a destination ≥1000ft from origin AND well-clear of any
+  // currently-active drone's position or destination. Safety-first: if no
+  // candidate meets the minimum clearance floor, return null and let the
+  // caller DEFER the spawn rather than create a congestion situation.
+  const half = AIRSPACE.HALF_WIDTH_FT - 200;
+  let best = null;
+  let bestMinDist = -Infinity;
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const dx = (Math.random() - 0.5) * 2 * half;
+    const dy = (Math.random() - 0.5) * 2 * half;
+    if (Math.hypot(dx - originX, dy - originY) < 1000) continue;
+    // Reject if destination falls inside any geofenced no-fly zone
+    if (isPointInGeofence(dx, dy)) continue;
+
+    let minToOther = Infinity;
+    for (const d of state.drones) {
+      if (d.destination) {
+        const dDest = Math.hypot(d.destination.x - dx, d.destination.y - dy);
+        if (dDest < minToOther) minToOther = dDest;
+      }
+      const dPos = Math.hypot(d.x - dx, d.z - dy);
+      if (dPos < minToOther) minToOther = dPos;
+    }
+    if (minToOther >= DESTINATION_MIN_SEPARATION_FT) return { x: dx, y: dy };
+    if (minToOther > bestMinDist) { bestMinDist = minToOther; best = { x: dx, y: dy }; }
+  }
+  // No candidate cleared the preferred separation. Use best ONLY if it
+  // clears the absolute minimum — otherwise signal congestion.
+  if (best && bestMinDist >= DESTINATION_MIN_ACCEPT_FT) return best;
+  return null;
+}
+
+// ===== Base stations (TPO Sovereign Nodes) =================================
+// In the deployment each base is at its real OC location (JWA, UCI, Costa Mesa
+// Civic Center, South Coast Plaza). For demo visibility within the 4000 ft
+// viewport, the four sites are clustered around the John Wayne Airport center.
+const BASES = [
+  {
+    id: 'BLADE-JWA-01',
+    name: 'JWA Emergency Response',
+    address: '18601 Airport Way · Santa Ana, CA 92707',
+    encNumber: 'ENC-JWA-0001',
+    encHeight: 62,
+    x: -550, y: 850,
+    blades: [
+      { id: 'B1', tenant: 'OC Fire Authority · ARFF',       mission: 'Airport Rescue & Firefighting' },
+      { id: 'B2', tenant: 'Hoag Hospital · Aero-Medical',   mission: 'JWA Critical Care Transport' },
+      { id: 'B3', tenant: 'OC Sheriff Air Support',         mission: 'Airport Security / SAR' },
+      { id: 'B4', tenant: 'TSA / FAA Coordination',         mission: 'Perimeter & Airfield Recon' }
+    ],
+    currentDrone: null, activeBlade: null, lastLaunchAt: -999999, lastRecoverAt: -999999
+  },
+  {
+    id: 'BLADE-UCI-02',
+    name: 'UCI Campus',
+    address: 'Aldrich Park · UCI Campus · Irvine, CA 92697',
+    encNumber: 'ENC-UCI-0002',
+    encHeight: 48,
+    x: 1500, y: -1200,
+    blades: [
+      { id: 'B1', tenant: 'UCI Police Department',          mission: 'Campus Security / SAR' },
+      { id: 'B2', tenant: 'UCI Medical · Emergency',        mission: 'Aero-Medical Critical Care' },
+      { id: 'B3', tenant: 'OCFA Station 27 · UCI',          mission: 'Structure Fire / EMS' },
+      { id: 'B4', tenant: 'UCI Research · Atmospheric',     mission: 'Scientific Sensor Lift' }
+    ],
+    currentDrone: null, activeBlade: null, lastLaunchAt: -999999, lastRecoverAt: -999999
+  },
+  {
+    id: 'BLADE-CMC-03',
+    name: 'Costa Mesa Civic Center',
+    address: '77 Fair Drive · Costa Mesa, CA 92626',
+    encNumber: 'ENC-CMC-0003',
+    encHeight: 54,
+    x: -1500, y: -900,
+    blades: [
+      { id: 'B1', tenant: 'Costa Mesa Fire Department',     mission: 'Structure Fire / EMS' },
+      { id: 'B2', tenant: 'Costa Mesa Police Department',   mission: 'LE Aerial Support' },
+      { id: 'B3', tenant: 'OC Sheriff · Costa Mesa Sub',    mission: 'Patrol / SAR' },
+      { id: 'B4', tenant: 'Newport-Mesa SAR Team',          mission: 'Cross-Jurisdiction Rescue' }
+    ],
+    currentDrone: null, activeBlade: null, lastLaunchAt: -999999, lastRecoverAt: -999999
+  },
+  {
+    id: 'BLADE-SCP-04',
+    name: 'South Coast Plaza',
+    address: '3333 Bristol Street · Costa Mesa, CA 92626',
+    encNumber: 'ENC-SCP-0004',
+    encHeight: 71,
+    x: 1200, y: 1400,
+    blades: [
+      { id: 'B1', tenant: 'OCFA Station 6 · Costa Mesa',    mission: 'High-Density Venue Response' },
+      { id: 'B2', tenant: 'Hoag Hospital · Outreach',       mission: 'Aero-Medical Standby' },
+      { id: 'B3', tenant: 'OC Health Care Agency',          mission: 'Public Health Surveillance' },
+      { id: 'B4', tenant: 'CM Police · Tactical Air',       mission: 'LE Aerial Crowd Mgmt' }
+    ],
+    currentDrone: null, activeBlade: null, lastLaunchAt: -999999, lastRecoverAt: -999999
+  }
+];
+const TPO_BASE_COOLDOWN_MS = 12000;
+function findAvailableBase() {
+  return BASES.find(b => b.currentDrone === null && (state.simTimeMs - b.lastRecoverAt > TPO_BASE_COOLDOWN_MS));
+}
+
+// ===== Sim constants =======================================================
+const CFG = {
+  CADENCE_HZ: 10,
+  TICK_MS: 100,
+  SAFETY_THRESHOLD_FT: 160,    // 2× envelope radius — bubbles must not overlap
+  SAFETY_VERTICAL_FT: 40,      // 1× envelope height
+  YIELD_DURATION_MS: 4000,
+  CRUISE_FT_S: 28,
+  CLIMB_FT_S: 18,
+  HOVER_MIN_MS: 25000,
+  HOVER_MAX_MS: 90000,
+  MISSION_TIMEOUT_MS: 600000,
+  MAX_PARTICIPANTS: 60,
+  TARGET_LATENCY_MS: 8,
+  TRAILING_MIN_FT: 400,        // minimum following distance — drones never visually close
+  TRAILING_ALT_TOL: 18,
+  EXTERNAL_SPAWN_INTERVAL_MS: 14000,
+  TPO_SPAWN_INTERVAL_MS: 28000
+};
+
+// ===== State ===============================================================
+const state = {
+  running: true,
+  speed: 1.0,
+  simTimeMs: 0,
+  spawnIntervalSec: 6,
+  lastSpawnAt: 0,
+  drones: [],
+  conflicts: [],
+  resolves: 0,
+  ledger: [],
+  ledgerDepth: 0,
+  yieldCmdCount: 0,
+  missionCount: 0,
+  missionsCompleted: 0,
+  latencyHistory: [],
+  nextDroneId: 1,
+  selectedDroneUID: null,
+  selectedDroneRef: null,
+  selectedBaseRef: null,
+  selectedGeofenceRef: null,
+  hoveredDroneRef: null
+};
+
+// ===== Crypto helpers (DEMO ONLY) ==========================================
+function hex(bytes) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+function pubKeyDemo() { return hex(32); }
+function sigDemo()    { return hex(64); }
+function tagShort(pk) { return 'PT-' + pk.slice(0,4).toUpperCase() + ':' + pk.slice(4,8).toUpperCase() + ':' + pk.slice(8,12).toUpperCase(); }
+
+// ===== Time formatting =====================================================
+function formatSimTime(ms) {
+  const totalSec = ms / 1000;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = Math.floor(totalSec % 60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// ===== Three.js scene setup ================================================
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04050a);
+scene.fog = new THREE.Fog(0x04050a, 3000, 8000);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 10, 20000);
+const CAMERA_HOME = { x: 2400, y: 1800, z: 2400 };
+camera.position.set(CAMERA_HOME.x, CAMERA_HOME.y, CAMERA_HOME.z);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 600;
+controls.maxDistance = 8000;
+controls.maxPolarAngle = Math.PI * 0.92;
+
+// ===== Lighting ============================================================
+const ambient = new THREE.AmbientLight(0x556677, 0.45);
+scene.add(ambient);
+
+const hemi = new THREE.HemisphereLight(0xaabbcc, 0x223344, 0.35);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xfff2dd, 0.75);
+sun.position.set(1500, 2500, 1000);
+sun.castShadow = true;
+sun.shadow.camera.left   = -3000;
+sun.shadow.camera.right  =  3000;
+sun.shadow.camera.top    =  3000;
+sun.shadow.camera.bottom = -3000;
+sun.shadow.camera.near   = 100;
+sun.shadow.camera.far    = 6000;
+sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
+
+// ===== Ground plane ========================================================
+const groundSize = AIRSPACE.HALF_WIDTH_FT * 2 + 1000;
+const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize);
+const groundMat = new THREE.MeshStandardMaterial({
+  color: 0x0a0c11,
+  roughness: 0.95,
+  metalness: 0
+});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Subtle grid lines on the ground for spatial reference
+const grid = new THREE.GridHelper(groundSize, 32, 0x1c2027, 0x141821);
+grid.position.y = 0.5;
+scene.add(grid);
+
+// ===== Corridor visualization on ground ====================================
+// NS corridors as cyan strips, EW as orange strips. Visible as ground markings.
+function buildCorridorMarkers() {
+  const corridorGroup = new THREE.Group();
+  const length = AIRSPACE.HALF_WIDTH_FT * 2;
+  const width = AIRSPACE.LANE_WIDTH_FT;
+
+  // NS corridors (run north-south, vary in x)
+  for (const lane of NS_LANES) {
+    const stripGeo = new THREE.PlaneGeometry(width, length);
+    const stripMat = new THREE.MeshBasicMaterial({
+      color: 0x00c2ff,
+      transparent: true,
+      opacity: 0.08,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const strip = new THREE.Mesh(stripGeo, stripMat);
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(lane.x, 1, 0);
+    corridorGroup.add(strip);
+
+    // Centerline
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(lane.x, 2, -length / 2),
+      new THREE.Vector3(lane.x, 2,  length / 2)
+    ]);
+    const lineMat = new THREE.LineDashedMaterial({
+      color: 0x00c2ff,
+      transparent: true,
+      opacity: 0.5,
+      dashSize: 40,
+      gapSize: 25
+    });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.computeLineDistances();
+    corridorGroup.add(line);
+  }
+
+  // EW corridors
+  for (const lane of EW_LANES) {
+    const stripGeo = new THREE.PlaneGeometry(length, width);
+    const stripMat = new THREE.MeshBasicMaterial({
+      color: 0xff8a00,
+      transparent: true,
+      opacity: 0.07,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const strip = new THREE.Mesh(stripGeo, stripMat);
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(0, 1, lane.y);
+    corridorGroup.add(strip);
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-length / 2, 2, lane.y),
+      new THREE.Vector3( length / 2, 2, lane.y)
+    ]);
+    const lineMat = new THREE.LineDashedMaterial({
+      color: 0xff8a00,
+      transparent: true,
+      opacity: 0.45,
+      dashSize: 40,
+      gapSize: 25
+    });
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.computeLineDistances();
+    corridorGroup.add(line);
+  }
+
+  scene.add(corridorGroup);
+  return corridorGroup;
+}
+const corridorMarkers = buildCorridorMarkers();
+
+// ===== Altitude band visualization =========================================
+// Faint horizontal planes showing the tier bands — toggled off by default
+// (visible only briefly when a yield exception fires). For now leave on but subtle.
+function buildAltBands() {
+  const group = new THREE.Group();
+  for (const tier of TIERS) {
+    if (tier.id === 'P00') continue;
+    const planeGeo = new THREE.PlaneGeometry(AIRSPACE.HALF_WIDTH_FT * 2, AIRSPACE.HALF_WIDTH_FT * 2);
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: tier.color,
+      transparent: true,
+      opacity: 0.015,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const plane = new THREE.Mesh(planeGeo, planeMat);
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.y = tier.altCenter;
+    group.add(plane);
+  }
+  scene.add(group);
+  return group;
+}
+const altBands = buildAltBands();
+
+// ===== Base station meshes =================================================
+function buildBaseStation(base) {
+  const group = new THREE.Group();
+  group.position.set(base.x, 0, base.y);
+
+  // Pad
+  const padGeo = new THREE.CylinderGeometry(50, 55, 4, 24);
+  const padMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2f38,
+    roughness: 0.6,
+    metalness: 0.3
+  });
+  const pad = new THREE.Mesh(padGeo, padMat);
+  pad.position.y = 2;
+  pad.receiveShadow = true;
+  pad.castShadow = true;
+  pad.userData.baseRef = base;
+  group.add(pad);
+
+  // Tower / Enclosure
+  const towerGeo = new THREE.BoxGeometry(18, 60, 18);
+  const towerMat = new THREE.MeshStandardMaterial({
+    color: 0x1c2027,
+    roughness: 0.55,
+    metalness: 0.4
+  });
+  const tower = new THREE.Mesh(towerGeo, towerMat);
+  tower.position.y = 34;
+  tower.castShadow = true;
+  tower.userData.baseRef = base;
+  group.add(tower);
+
+  // Larger invisible picker for easy clicking
+  const pickerGeo = new THREE.CylinderGeometry(60, 60, 130, 16);
+  const pickerMat = new THREE.MeshBasicMaterial({ visible: false });
+  const picker = new THREE.Mesh(pickerGeo, pickerMat);
+  picker.position.y = 65;
+  picker.userData.baseRef = base;
+  group.add(picker);
+
+  // Beacon at top
+  const beaconGeo = new THREE.SphereGeometry(6, 16, 12);
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff8a00 });
+  const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+  beacon.position.y = 70;
+  group.add(beacon);
+
+  // Glow halo
+  const haloGeo = new THREE.SphereGeometry(12, 16, 12);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0xff8a00,
+    transparent: true,
+    opacity: 0.25,
+    depthWrite: false
+  });
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  halo.position.y = 70;
+  group.add(halo);
+  base.beaconHalo = halo;
+
+  // Selection ring (hidden by default)
+  const ringGeo = new THREE.TorusGeometry(70, 2, 8, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xff8a00,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 4;
+  group.add(ring);
+  base.selectionRing = ring;
+
+  // Floating label sprite
+  const label = makeTextSprite(base.id, base.name);
+  label.position.y = 130;
+  group.add(label);
+
+  scene.add(group);
+  base.meshGroup = group;
+  return group;
+}
+
+function makeTextSprite(line1, line2) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const cx = c.getContext('2d');
+  cx.fillStyle = 'rgba(8,9,11,0.75)';
+  cx.fillRect(0, 0, 512, 128);
+  cx.strokeStyle = '#ff8a00';
+  cx.lineWidth = 2;
+  cx.strokeRect(2, 2, 508, 124);
+  cx.fillStyle = '#ff8a00';
+  cx.font = 'bold 24px "JetBrains Mono", monospace';
+  cx.textAlign = 'center';
+  cx.fillText(line1, 256, 50);
+  cx.fillStyle = '#e8eaed';
+  cx.font = '22px "IBM Plex Sans Condensed", sans-serif';
+  cx.fillText(line2, 256, 88);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(200, 50, 1);
+  return sprite;
+}
+
+for (const base of BASES) buildBaseStation(base);
+
+// ===== John Wayne Airport (KSNA) ============================================
+// Compact visual representation centered at origin. Runway lengths scaled
+// down to fit the 4000ft viewport; orientation is true N-S (real JWA is ~020°).
+function buildJohnWayneAirport() {
+  const group = new THREE.Group();
+
+  // Apron / taxiway surface
+  const apronGeo = new THREE.PlaneGeometry(700, 1900);
+  const apronMat = new THREE.MeshStandardMaterial({ color: 0x252830, roughness: 0.85 });
+  const apron = new THREE.Mesh(apronGeo, apronMat);
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.set(-100, 0.5, 0);
+  group.add(apron);
+
+  // Main Runway 02L/20R (1400 ft long visual)
+  const r1Geo = new THREE.PlaneGeometry(50, 1400);
+  const r1Mat = new THREE.MeshStandardMaterial({ color: 0x121418, roughness: 0.95 });
+  const r1 = new THREE.Mesh(r1Geo, r1Mat);
+  r1.rotation.x = -Math.PI / 2;
+  r1.position.set(-130, 1, 0);
+  group.add(r1);
+
+  // Center stripe (dashed white)
+  for (let z = -600; z < 600; z += 90) {
+    const stripeGeo = new THREE.PlaneGeometry(1.5, 28);
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xeeeeee });
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.position.set(-130, 1.5, z + 45);
+    group.add(stripe);
+  }
+
+  // Threshold piano-key markings at both ends
+  for (const ze of [-680, 680]) {
+    for (let xo = -18; xo <= 18; xo += 6) {
+      const tGeo = new THREE.PlaneGeometry(2, 24);
+      const tMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const t = new THREE.Mesh(tGeo, tMat);
+      t.rotation.x = -Math.PI / 2;
+      t.position.set(-130 + xo, 1.5, ze);
+      group.add(t);
+    }
+  }
+
+  // GA Runway 02R/20L (parallel, east side, shorter)
+  const r2Geo = new THREE.PlaneGeometry(28, 720);
+  const r2Mat = new THREE.MeshStandardMaterial({ color: 0x121418, roughness: 0.95 });
+  const r2 = new THREE.Mesh(r2Geo, r2Mat);
+  r2.rotation.x = -Math.PI / 2;
+  r2.position.set(80, 1, 0);
+  group.add(r2);
+
+  // Terminal building (Thomas F. Riley Terminal)
+  const tBoxGeo = new THREE.BoxGeometry(180, 26, 620);
+  const tBoxMat = new THREE.MeshStandardMaterial({ color: 0xbac4d2, roughness: 0.5, metalness: 0.3 });
+  const tBox = new THREE.Mesh(tBoxGeo, tBoxMat);
+  tBox.position.set(-400, 13, 50);
+  tBox.castShadow = true;
+  group.add(tBox);
+
+  // Control tower (Class C)
+  const towerBaseGeo = new THREE.CylinderGeometry(8, 9, 56, 12);
+  const towerBaseMat = new THREE.MeshStandardMaterial({ color: 0x9ba3b0, roughness: 0.45, metalness: 0.5 });
+  const towerBase = new THREE.Mesh(towerBaseGeo, towerBaseMat);
+  towerBase.position.set(-320, 28, -220);
+  group.add(towerBase);
+  const towerCabGeo = new THREE.CylinderGeometry(13, 13, 10, 12);
+  const towerCabMat = new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.3, metalness: 0.3 });
+  const towerCab = new THREE.Mesh(towerCabGeo, towerCabMat);
+  towerCab.position.set(-320, 62, -220);
+  group.add(towerCab);
+  // Tower anti-collision beacon
+  const beaconGeo = new THREE.SphereGeometry(2.5, 12, 8);
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff2d3d });
+  const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+  beacon.position.set(-320, 70, -220);
+  group.add(beacon);
+
+  // Approach corridor — Runway 20 (planes land from the north, descend southward)
+  for (const xa of [-130, 80]) {
+    const apG = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(xa, 2,    680),       // runway threshold
+      new THREE.Vector3(xa, 250,  1100),      // descending
+      new THREE.Vector3(xa, 600,  1500),      // ~600 ft alt
+      new THREE.Vector3(xa, 1200, 1900)       // cruise at 1200ft
+    ]);
+    const apM = new THREE.LineDashedMaterial({
+      color: 0xff8a00, dashSize: 50, gapSize: 32, transparent: true, opacity: 0.55
+    });
+    const ap = new THREE.Line(apG, apM);
+    ap.computeLineDistances();
+    group.add(ap);
+  }
+
+  // Departure corridor — Runway 20 (planes climb out to the south)
+  for (const xd of [-130, 80]) {
+    const dpG = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(xd, 2,    -680),
+      new THREE.Vector3(xd, 250, -1100),
+      new THREE.Vector3(xd, 600, -1500),
+      new THREE.Vector3(xd, 1200, -1900)
+    ]);
+    const dpM = new THREE.LineDashedMaterial({
+      color: 0xff8a00, dashSize: 50, gapSize: 32, transparent: true, opacity: 0.55
+    });
+    const dp = new THREE.Line(dpG, dpM);
+    dp.computeLineDistances();
+    group.add(dp);
+  }
+
+  // JWA Label
+  const label = makeTextSprite('KSNA · KSNA', 'JOHN WAYNE AIRPORT');
+  label.position.set(-320, 130, 0);
+  group.add(label);
+
+  scene.add(group);
+  return group;
+}
+buildJohnWayneAirport();
+
+// ===== Geofences & Real OC Buildings ========================================
+// Per the FAA NPRM on geofencing (against drone surveillance overflight),
+// every Peck-Tag-equipped drone respects geofence boundaries. Flight
+// controllers refuse to enter; the Registrar plans corridor routes that
+// avoid them. Only P0 manned aircraft (ADS-B/UTM-authorized) are cleared
+// to operate inside the airport geofence.
+//
+// shape='rect' uses minX/maxX/minY/maxY bounds.
+// shape='circle' uses cx/cy/radius.
+// ceilingFt: how high the geofence extends. Drones must stay outside
+// the cylinder/box below this altitude.
+const GEOFENCES = [
+  // The big one — entire JWA complex
+  { id: 'GF-KSNA', name: 'John Wayne Airport (KSNA)', type: 'AIRPORT',
+    shape: 'rect', minX: -450, maxX: 300, minY: -900, maxY: 900,
+    ceilingFt: 500, severity: 'CRITICAL', color: 0xff2d3d },
+
+  // Real OC landmarks within the JWA-area viewport (positions compressed
+  // for demo; in deployment each is at its real lat/lon)
+  { id: 'GF-LYON', name: 'Lyon Air Museum',
+    type: 'BUILDING', shape: 'circle', cx: 300, cy: -1500, r: 95,
+    height: 50, ceilingFt: 150, color: 0xffaa00 },
+  { id: 'GF-ATRIUM', name: 'Atrium Hotel · MacArthur',
+    type: 'BUILDING', shape: 'circle', cx: -200, cy: 1700, r: 70,
+    height: 140, ceilingFt: 240, color: 0xffaa00 },
+  { id: 'GF-HYATT', name: 'Hyatt Regency JWA',
+    type: 'BUILDING', shape: 'circle', cx: 550, cy: 1000, r: 70,
+    height: 105, ceilingFt: 205, color: 0xffaa00 },
+  { id: 'GF-PARK-PL', name: 'Park Place Office Complex',
+    type: 'BUILDING', shape: 'circle', cx: 1550, cy: 100, r: 110,
+    height: 210, ceilingFt: 310, color: 0xffaa00 },
+  { id: 'GF-NPB-MAR', name: 'Newport Beach Marriott',
+    type: 'BUILDING', shape: 'circle', cx: -1100, cy: -1700, r: 80,
+    height: 130, ceilingFt: 230, color: 0xffaa00 },
+  { id: 'GF-DISCOVERY', name: 'Discovery Cube OC',
+    type: 'BUILDING', shape: 'circle', cx: -1700, cy: 1500, r: 75,
+    height: 65, ceilingFt: 165, color: 0xffaa00 },
+  { id: 'GF-CMC-CC', name: 'Costa Mesa Country Club',
+    type: 'RECREATION', shape: 'circle', cx: -1700, cy: 400, r: 180,
+    height: 25, ceilingFt: 200, color: 0x44d9b1 }
+];
+
+// Returns true if point (x, y) lies inside any geofence horizontal projection.
+function isPointInGeofence(x, y, ignoreId) {
+  for (const gf of GEOFENCES) {
+    if (ignoreId && gf.id === ignoreId) continue;
+    if (gf.shape === 'rect') {
+      if (x >= gf.minX && x <= gf.maxX && y >= gf.minY && y <= gf.maxY) return gf;
+    } else if (gf.shape === 'circle') {
+      if (Math.hypot(x - gf.cx, y - gf.cy) <= gf.r) return gf;
+    }
+  }
+  return null;
+}
+
+// Returns true if a corridor LANE (NS or EW) intersects any geofence.
+// Used by the Registrar to refuse blocked lanes during route planning.
+function laneIntersectsGeofence(lane, axis) {
+  for (const gf of GEOFENCES) {
+    if (gf.type !== 'AIRPORT') continue;   // for now only the airport blocks lanes
+    if (gf.shape === 'rect') {
+      if (axis === 'NS') {
+        // NS lane at x = lane.x runs full y-range. Blocked if lane.x in [minX, maxX]
+        if (lane.x >= gf.minX && lane.x <= gf.maxX) return gf;
+      } else if (axis === 'EW') {
+        if (lane.y >= gf.minY && lane.y <= gf.maxY) return gf;
+      }
+    }
+  }
+  return null;
+}
+
+// ===== Segment-geofence intersection (for full route planning) =============
+// Standard 2D segment-vs-segment intersection (parameter-form line intersect).
+function segmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
+  const d = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+  if (Math.abs(d) < 1e-9) return false;
+  const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / d;
+  const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+function pointInRect(px, py, minX, minY, maxX, maxY) {
+  return px >= minX && px <= maxX && py >= minY && py <= maxY;
+}
+
+function segmentCrossesRect(x1, y1, x2, y2, minX, minY, maxX, maxY) {
+  if (pointInRect(x1, y1, minX, minY, maxX, maxY)) return true;
+  if (pointInRect(x2, y2, minX, minY, maxX, maxY)) return true;
+  return segmentsIntersect(x1, y1, x2, y2, minX, minY, maxX, minY)   // south edge
+      || segmentsIntersect(x1, y1, x2, y2, maxX, minY, maxX, maxY)   // east edge
+      || segmentsIntersect(x1, y1, x2, y2, maxX, maxY, minX, maxY)   // north edge
+      || segmentsIntersect(x1, y1, x2, y2, minX, maxY, minX, minY);  // west edge
+}
+
+function segmentCrossesCircle(x1, y1, x2, y2, cx, cy, r) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-9) return Math.hypot(x1 - cx, y1 - cy) <= r;
+  let t = ((cx - x1) * dx + (cy - y1) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const px = x1 + t * dx, py = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy) <= r;
+}
+
+// Returns the geofence object crossed, or null if route segment is clear.
+function segmentCrossesGeofence(x1, y1, x2, y2, ignoreType) {
+  for (const gf of GEOFENCES) {
+    if (ignoreType && gf.type === ignoreType) continue;
+    if (gf.shape === 'rect') {
+      if (segmentCrossesRect(x1, y1, x2, y2, gf.minX, gf.minY, gf.maxX, gf.maxY)) return gf;
+    } else if (gf.shape === 'circle') {
+      if (segmentCrossesCircle(x1, y1, x2, y2, gf.cx, gf.cy, gf.r)) return gf;
+    }
+  }
+  return null;
+}
+
+// Compute the MINIMUM SEPARATION between a candidate route's segment samples
+// and every currently-active drone's position (and near-future trajectory).
+// Higher return value = better isolated route. This drives DECONFLICTION-FIRST
+// scoring — the planner prefers routes that stay far from all active traffic
+// even at significant distance cost (battery-electric propulsion is non-scarce).
+function computeMinSeparationToOthers(segs, selfDrone) {
+  if (!state.drones || state.drones.length === 0) return 9999;
+  let minSep = 9999;
+  const SAMPLES_PER_SEG = 6;
+  for (const [x1, y1, x2, y2] of segs) {
+    for (let s = 0; s <= SAMPLES_PER_SEG; s++) {
+      const t = s / SAMPLES_PER_SEG;
+      const px = x1 + (x2 - x1) * t;
+      const py = y1 + (y2 - y1) * t;
+      for (const other of state.drones) {
+        if (other === selfDrone) continue;
+        if (other._removed) continue;
+        // Check current position
+        const d1 = Math.hypot(other.x - px, other.z - py);
+        if (d1 < minSep) minSep = d1;
+        // Check next waypoint position (10-30s ahead projection)
+        if (other._plan && other._waypointIdx < other._plan.length) {
+          const wp = other._plan[other._waypointIdx];
+          const d2 = Math.hypot(wp.x - px, wp.y - py);
+          if (d2 < minSep) minSep = d2;
+        }
+      }
+    }
+  }
+  return minSep;
+}
+
+// Find a detour waypoint that routes around a geofence (rect or circle).
+// Returns a {x, y} that, when inserted between (x1,y1) and (x2,y2), yields
+// two clear segments. Picks the corner/tangent with minimum total path length.
+function findDetourPoint(x1, y1, x2, y2, gf) {
+  const buffer = 120;
+  let candidates;
+  if (gf.shape === 'rect') {
+    candidates = [
+      { x: gf.minX - buffer, y: gf.minY - buffer },
+      { x: gf.minX - buffer, y: gf.maxY + buffer },
+      { x: gf.maxX + buffer, y: gf.minY - buffer },
+      { x: gf.maxX + buffer, y: gf.maxY + buffer }
+    ];
+  } else {
+    // Perpendicular to the segment, offset by radius + buffer
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const perp = ang + Math.PI / 2;
+    const d = gf.r + buffer;
+    candidates = [
+      { x: gf.cx + Math.cos(perp) * d, y: gf.cy + Math.sin(perp) * d },
+      { x: gf.cx - Math.cos(perp) * d, y: gf.cy - Math.sin(perp) * d }
+    ];
+  }
+  let best = null, bestDist = Infinity;
+  for (const c of candidates) {
+    if (segmentCrossesGeofence(x1, y1, c.x, c.y)) continue;
+    if (segmentCrossesGeofence(c.x, c.y, x2, y2)) continue;
+    const d = Math.hypot(c.x - x1, c.y - y1) + Math.hypot(x2 - c.x, y2 - c.y);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
+function buildGeofencesAndBuildings() {
+  const group = new THREE.Group();
+
+  for (const gf of GEOFENCES) {
+    if (gf.shape === 'rect') {
+      // Airport perimeter wall (extruded rectangle outline)
+      const w = gf.maxX - gf.minX, d = gf.maxY - gf.minY;
+      const cx = (gf.minX + gf.maxX) / 2, cy = (gf.minY + gf.maxY) / 2;
+      // Walls (four planes facing inward)
+      const wallMat = new THREE.MeshBasicMaterial({
+        color: gf.color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false
+      });
+      const wallTopMat = new THREE.MeshBasicMaterial({
+        color: gf.color, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false
+      });
+      // North/south walls
+      const nsWGeo = new THREE.PlaneGeometry(w, gf.ceilingFt);
+      const wN = new THREE.Mesh(nsWGeo, wallMat);
+      wN.position.set(cx, gf.ceilingFt / 2, gf.maxY);
+      group.add(wN);
+      const wS = new THREE.Mesh(nsWGeo, wallMat);
+      wS.position.set(cx, gf.ceilingFt / 2, gf.minY);
+      group.add(wS);
+      // East/west walls
+      const ewWGeo = new THREE.PlaneGeometry(d, gf.ceilingFt);
+      const wE = new THREE.Mesh(ewWGeo, wallMat);
+      wE.rotation.y = Math.PI / 2;
+      wE.position.set(gf.maxX, gf.ceilingFt / 2, cy);
+      group.add(wE);
+      const wW = new THREE.Mesh(ewWGeo, wallMat);
+      wW.rotation.y = Math.PI / 2;
+      wW.position.set(gf.minX, gf.ceilingFt / 2, cy);
+      group.add(wW);
+      // Ceiling cap
+      const capGeo = new THREE.PlaneGeometry(w, d);
+      const cap = new THREE.Mesh(capGeo, wallTopMat);
+      cap.rotation.x = -Math.PI / 2;
+      cap.position.set(cx, gf.ceilingFt, cy);
+      cap.userData.geofenceRef = gf;
+      group.add(cap);
+      wN.userData.geofenceRef = gf; wS.userData.geofenceRef = gf;
+      wE.userData.geofenceRef = gf; wW.userData.geofenceRef = gf;
+
+      // Perimeter outline at top + bottom (red dashed)
+      const lineMat = new THREE.LineDashedMaterial({
+        color: gf.color, transparent: true, opacity: 0.85, dashSize: 30, gapSize: 18
+      });
+      for (const yLine of [4, gf.ceilingFt - 2]) {
+        const outlineGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(gf.minX, yLine, gf.minY),
+          new THREE.Vector3(gf.maxX, yLine, gf.minY),
+          new THREE.Vector3(gf.maxX, yLine, gf.maxY),
+          new THREE.Vector3(gf.minX, yLine, gf.maxY),
+          new THREE.Vector3(gf.minX, yLine, gf.minY)
+        ]);
+        const outline = new THREE.Line(outlineGeo, lineMat);
+        outline.computeLineDistances();
+        group.add(outline);
+      }
+
+      // GEOFENCE label
+      const lbl = makeTextSprite(gf.id, gf.name);
+      lbl.position.set(cx, gf.ceilingFt + 30, gf.maxY + 60);
+      group.add(lbl);
+    } else if (gf.shape === 'circle') {
+      // Building footprint (3D box approximation)
+      const bldgGeo = new THREE.CylinderGeometry(gf.r * 0.7, gf.r * 0.7, gf.height, 12);
+      const bldgMat = new THREE.MeshStandardMaterial({
+        color: 0x4a5564, roughness: 0.6, metalness: 0.3
+      });
+      const bldg = new THREE.Mesh(bldgGeo, bldgMat);
+      bldg.position.set(gf.cx, gf.height / 2, gf.cy);
+      bldg.castShadow = true;
+      bldg.receiveShadow = true;
+      bldg.userData.geofenceRef = gf;
+      group.add(bldg);
+
+      // Cylindrical geofence wall around building
+      const fenceGeo = new THREE.CylinderGeometry(gf.r, gf.r, gf.ceilingFt, 32, 1, true);
+      const fenceMat = new THREE.MeshBasicMaterial({
+        color: gf.color, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false
+      });
+      const fence = new THREE.Mesh(fenceGeo, fenceMat);
+      fence.position.set(gf.cx, gf.ceilingFt / 2, gf.cy);
+      fence.userData.geofenceRef = gf;
+      group.add(fence);
+
+      // Top ring outline (dashed)
+      const ringGeo = new THREE.BufferGeometry();
+      const ringPts = [];
+      for (let a = 0; a <= 64; a++) {
+        const ang = (a / 64) * Math.PI * 2;
+        ringPts.push(new THREE.Vector3(gf.cx + Math.cos(ang) * gf.r, gf.ceilingFt - 1, gf.cy + Math.sin(ang) * gf.r));
+      }
+      ringGeo.setFromPoints(ringPts);
+      const ringMat = new THREE.LineDashedMaterial({
+        color: gf.color, transparent: true, opacity: 0.75, dashSize: 12, gapSize: 8
+      });
+      const ringLine = new THREE.Line(ringGeo, ringMat);
+      ringLine.computeLineDistances();
+      group.add(ringLine);
+
+      // Ground ring outline (solid)
+      const groundRingGeo = new THREE.BufferGeometry();
+      const groundRingPts = [];
+      for (let a = 0; a <= 64; a++) {
+        const ang = (a / 64) * Math.PI * 2;
+        groundRingPts.push(new THREE.Vector3(gf.cx + Math.cos(ang) * gf.r, 3, gf.cy + Math.sin(ang) * gf.r));
+      }
+      groundRingGeo.setFromPoints(groundRingPts);
+      const groundRingMat = new THREE.LineBasicMaterial({
+        color: gf.color, transparent: true, opacity: 0.6
+      });
+      group.add(new THREE.Line(groundRingGeo, groundRingMat));
+
+      // Building label
+      const lbl = makeTextSprite(gf.id, gf.name);
+      lbl.position.set(gf.cx, gf.ceilingFt + 25, gf.cy);
+      group.add(lbl);
+    }
+  }
+
+  scene.add(group);
+  return group;
+}
+buildGeofencesAndBuildings();
+
+// ===== Drone state machine =================================================
+const MISSION_STATES = ['SPAWNING', 'OUTBOUND', 'HOVERING', 'RETURNING', 'DESPAWNING'];
+
+class Drone {
+  constructor(tierId, opts = {}) {
+    this.tier = TIER_MAP[tierId];
+    this.id = state.nextDroneId++;
+
+    // Brand + UID (permanent identity)
+    this.brand = opts.brand || 'RD';
+    this.brandInfo = BRANDS[this.brand];
+    this.uid = opts.uid || nextUID(this.brand);
+
+    // Peck Tag (cryptographic identity issued by Registrar)
+    this.pubKey = pubKeyDemo();
+    this.tagShort = tagShort(this.pubKey);
+    this.spawnedAt = state.simTimeMs;
+    this.yieldUntil = 0;
+    this.yieldType = null;
+    this.offCorridor = opts.offCorridor || false;
+    this.isTPO = this.brandInfo.tpo;
+
+    // Origin — could be TPO base, external operator depot, or override edge point
+    this.originBase = opts.originBase || BASES[0];
+    this.isExternal = !this.isTPO || opts.isExternal;
+
+    // Pick destination using Registrar's separation-aware allocator.
+    // If null returned, the airspace is congested — caller must abort spawn.
+    if (opts.destination) {
+      this.destination = opts.destination;
+    } else {
+      const dest = pickFreeDestination(this.originBase.x, this.originBase.y);
+      if (!dest) {
+        this._abort = true;
+        return;
+      }
+      this.destination = dest;
+    }
+
+    // Tier altitude with sub-axis offset
+    this._assignAltitude();
+
+    // Route plan
+    if (opts.forcePlan) {
+      this._plan = opts.forcePlan;
+      // For aircraft on a forced path, start at the first waypoint position+altitude
+      const wp0 = this._plan[0];
+      this.x = wp0.x;
+      this.y = wp0.alt;
+      this.z = wp0.y;
+      this._vx = 0; this._vy = 0; this._vz = 0;
+      this._waypointIdx = 1;   // begin heading to second waypoint
+      this.cruiseAlt = wp0.alt;
+      this._oneWay = true;     // no return-trip; despawn at last waypoint
+    } else if (!this.offCorridor) {
+      this._plan = this._planCorridorRoute();
+      this._waypointIdx = 0;
+      // Initial position at origin (ground)
+      this.x = this.originBase.x;
+      this.y = 4;
+      this.z = this.originBase.y;
+      this._vx = 0; this._vy = 0; this._vz = 0;
+    } else {
+      this._plan = this._planDirectRoute();
+      this._waypointIdx = 0;
+      this.x = this.originBase.x;
+      this.y = 4;
+      this.z = this.originBase.y;
+      this._vx = 0; this._vy = 0; this._vz = 0;
+    }
+
+    // Lane tracking for trailing separation
+    this._currentLane = null;        // 'NS-3' or 'EW-5' etc.
+    this._currentLaneAxis = null;    // 'NS' or 'EW'
+    this._currentLaneDir = 0;        // +1 or -1
+
+    this.state = opts.forcePlan ? 'OUTBOUND' : 'SPAWNING';
+    this.stateStartedAt = state.simTimeMs;
+    this.hoverDurationMs = CFG.HOVER_MIN_MS + Math.random() * (CFG.HOVER_MAX_MS - CFG.HOVER_MIN_MS);
+    this.trailingThrottle = 1.0;     // visible throttle state
+
+    this._buildMesh();
+    state.missionCount++;
+  }
+
+  _assignAltitude() {
+    // Deterministic altitude — every drone in tier flies at altCenter.
+    // NS/EW offset applied in _planCorridorRoute() handles intersection separation.
+    this.cruiseAlt = this.tier.altCenter;
+  }
+
+  _planCorridorRoute() {
+    const ox = this.originBase.x, oy = this.originBase.y;
+    const dx = this.destination.x, dy = this.destination.y;
+    const now = state.simTimeMs;
+    const myTier = this.tier.id;
+
+    // Evaluate every (NS lane × EW lane × ordering) combination.
+    // PASS 1: collect routes with ZERO geofence crossings. Pick the cheapest.
+    // PASS 2 (fallback only): if no clean route exists, pick the least-bad
+    //         and insert detour waypoints to route around the obstacle.
+    const cleanCandidates = [];
+    const dirtyCandidates = [];
+
+    for (const ns of NS_LANES) {
+      if (laneIntersectsGeofence(ns, 'NS')) continue;
+      for (const ew of EW_LANES) {
+        if (laneIntersectsGeofence(ew, 'EW')) continue;
+        for (const nsFirst of [true, false]) {
+          let segs;
+          if (nsFirst) {
+            segs = [
+              [ox, oy, ns.x, oy],
+              [ns.x, oy, ns.x, ew.y],
+              [ns.x, ew.y, dx, ew.y],
+              [dx, ew.y, dx, dy]
+            ];
+          } else {
+            segs = [
+              [ox, oy, ox, ew.y],
+              [ox, ew.y, ns.x, ew.y],
+              [ns.x, ew.y, ns.x, dy],
+              [ns.x, dy, dx, dy]
+            ];
+          }
+          let crossings = 0;
+          let dist = 0;
+          for (const [x1, y1, x2, y2] of segs) {
+            if (segmentCrossesGeofence(x1, y1, x2, y2)) crossings++;
+            dist += Math.hypot(x2 - x1, y2 - y1);
+          }
+          const nsConflict = getLaneOccupantTiers(ns.label, myTier).size;
+          const ewConflict = getLaneOccupantTiers(ew.label, myTier).size;
+          const nsRecent = (now - (LANE_RESERVATIONS[ns.label] || -999999) < LANE_RESERVATION_MS) ? 1 : 0;
+          const ewRecent = (now - (LANE_RESERVATIONS[ew.label] || -999999) < LANE_RESERVATION_MS) ? 1 : 0;
+          const recentPairUses = RECENT_ROUTES.reduce((acc, r) =>
+            acc + ((r[0] === ns.label && r[1] === ew.label) ? 1 : 0), 0);
+          // Deconfliction score — minimum distance from any segment midpoint
+          // of this candidate route to any currently-active drone's position.
+          // Higher minSep = better route. This is the PRIMARY objective.
+          const minSep = computeMinSeparationToOthers(segs, this);
+
+          // DECONFLICTION-FIRST scoring (fiber-network analogy):
+          //   Battery-electric propulsion is non-scarce — distance is not a
+          //   meaningful cost. Routing optimizes for INTER-VEHICLE SEPARATION
+          //   like a fiber network optimizes for redundancy/reliability, not
+          //   shortest path. Distance is included only as a tiebreaker (×0.05)
+          //   among otherwise-equivalent candidates.
+          //   Patent §IV — defensible commercial-method claim distinguishing
+          //   TPO from all prior-art ATC routing inherited from fuel-cost
+          //   manned-aviation optimization.
+          const score = (-minSep * 12)
+                      + (nsConflict + ewConflict) * TIER_LANE_CONFLICT_PENALTY
+                      + (nsRecent + ewRecent) * RECENT_RESERVATION_PENALTY
+                      + recentPairUses * RECENT_ROUTE_PENALTY
+                      + dist * 0.05;     // distance: tiebreaker only
+          const candidate = { ns, ew, nsFirst, crossings, score, minSep, dist };
+          if (crossings === 0) cleanCandidates.push(candidate);
+          else                 dirtyCandidates.push(candidate);
+        }
+      }
+    }
+
+    let best;
+    if (cleanCandidates.length > 0) {
+      cleanCandidates.sort((a, b) => a.score - b.score);
+      best = cleanCandidates[0];
+      // Demonstrate deconfliction-first: if we chose a route significantly
+      // longer than the absolute shortest, log it so demo viewers see why.
+      const shortestDist = Math.min(...cleanCandidates.map(c => c.dist));
+      if (best.dist > shortestDist * 1.2 && best.minSep > 200) {
+        const pctLonger = Math.round((best.dist / shortestDist - 1) * 100);
+        logSystem(`Deconfliction routing · +${pctLonger}% path · ${Math.round(best.minSep)} ft sep maintained`);
+      }
+    } else {
+      // No clean route exists — fall back to lowest crossings + lowest score
+      dirtyCandidates.sort((a, b) => (a.crossings - b.crossings) || (a.score - b.score));
+      best = dirtyCandidates[0] || { ns: NS_LANES[0], ew: EW_LANES[0], nsFirst: true, crossings: 0 };
+      logSystem(`Registrar · no clean corridor for ${this.uid || '?'} · inserting detour`);
+    }
+
+    LANE_RESERVATIONS[best.ns.label] = now;
+    LANE_RESERVATIONS[best.ew.label] = now;
+    // Track route history so the next planning call avoids reusing this pair
+    RECENT_ROUTES.push([best.ns.label, best.ew.label]);
+    while (RECENT_ROUTES.length > RECENT_ROUTE_DEPTH) RECENT_ROUTES.shift();
+
+    const nsAlt = getDirectionalAltitude(myTier, 'NS', best.ns.dir, best.ns.idx);
+    const ewAlt = getDirectionalAltitude(myTier, 'EW', best.ew.dir, best.ew.idx);
+    this.cruiseAlt = best.nsFirst ? nsAlt : ewAlt;
+
+    let plan;
+    if (best.nsFirst) {
+      plan = [
+        { x: ox,       y: oy,        alt: nsAlt, kind: 'CLIMB' },
+        { x: best.ns.x, y: oy,       alt: nsAlt, kind: 'JOIN-NS',   lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
+        { x: best.ns.x, y: best.ew.y, alt: nsAlt, kind: 'CRUISE-NS', lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
+        { x: best.ns.x, y: best.ew.y, alt: ewAlt, kind: 'JOIN-EW',   lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
+        { x: dx,       y: best.ew.y, alt: ewAlt, kind: 'CRUISE-EW', lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
+        { x: dx,       y: dy,        alt: ewAlt, kind: 'APPROACH' }
+      ];
+    } else {
+      plan = [
+        { x: ox,        y: oy,        alt: ewAlt, kind: 'CLIMB' },
+        { x: ox,        y: best.ew.y, alt: ewAlt, kind: 'JOIN-EW',   lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
+        { x: best.ns.x, y: best.ew.y, alt: ewAlt, kind: 'CRUISE-EW', lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
+        { x: best.ns.x, y: best.ew.y, alt: nsAlt, kind: 'JOIN-NS',   lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
+        { x: best.ns.x, y: dy,        alt: nsAlt, kind: 'CRUISE-NS', lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
+        { x: dx,        y: dy,        alt: nsAlt, kind: 'APPROACH' }
+      ];
+    }
+
+    // Detour fallback: only fires if we landed in PASS 2 with crossings > 0.
+    if (best.crossings > 0) {
+      const detoured = [plan[0]];
+      for (let i = 1; i < plan.length; i++) {
+        const prev = detoured[detoured.length - 1];
+        const cur  = plan[i];
+        const gf = segmentCrossesGeofence(prev.x, prev.y, cur.x, cur.y);
+        if (gf) {
+          const dp = findDetourPoint(prev.x, prev.y, cur.x, cur.y, gf);
+          if (dp) {
+            detoured.push({
+              x: dp.x, y: dp.y, alt: cur.alt,
+              kind: 'DETOUR',
+              lane: cur.lane, axis: cur.axis, dir: cur.dir
+            });
+          }
+        }
+        detoured.push(cur);
+      }
+      plan = detoured;
+    }
+
+    return plan;
+  }
+
+  _planDirectRoute() {
+    // LCR direct-line override: straight from origin to destination at one
+    // altitude. But even life-critical traffic respects geofences — if the
+    // straight line would cross the airport (or any other zone), insert a
+    // single detour waypoint to route around.
+    const ox = this.originBase.x, oy = this.originBase.y;
+    const dx = this.destination.x, dy = this.destination.y;
+
+    const plan = [
+      { x: ox, y: oy, alt: this.cruiseAlt, kind: 'CLIMB' },
+      { x: dx, y: dy, alt: this.cruiseAlt, kind: 'DIRECT' }
+    ];
+    const gf = segmentCrossesGeofence(ox, oy, dx, dy);
+    if (gf) {
+      const dp = findDetourPoint(ox, oy, dx, dy, gf);
+      if (dp) {
+        plan.splice(1, 0, { x: dp.x, y: dp.y, alt: this.cruiseAlt, kind: 'DETOUR' });
+        logSystem(`LCR direct-line · routing around ${gf.id} · ${this.uid || ''}`);
+      }
+    }
+    return plan;
+  }
+
+  _buildMesh() {
+    const g = new THREE.Group();
+
+    let bodyGeo;
+    const isManned = (this.tier.id === 'P0' || this.tier.id === 'P00');
+    if (isManned) {
+      bodyGeo = new THREE.BoxGeometry(20, 8, 32);   // fuselage — clearly bigger than drones
+    } else if (this.tier.id === 'P1') {
+      bodyGeo = new THREE.OctahedronGeometry(16, 0);   // 60% larger than before
+    } else {
+      bodyGeo = new THREE.ConeGeometry(11, 22, 8);      // 60% larger than before
+      bodyGeo.rotateX(Math.PI / 2);
+    }
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: this.tier.color,
+      emissive: this.tier.color,
+      emissiveIntensity: isManned ? 0.7 : 0.4,
+      roughness: 0.3,
+      metalness: 0.6
+    });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.castShadow = true;
+    body.userData.droneRef = this;
+    g.add(body);
+
+    // P0/P00 aircraft get wings (cross-shape) so they're instantly recognizable
+    if (isManned) {
+      const wingGeo = new THREE.BoxGeometry(38, 2, 8);
+      const wing = new THREE.Mesh(wingGeo, bodyMat);
+      g.add(wing);
+      const tailGeo = new THREE.BoxGeometry(14, 2, 6);
+      const tail = new THREE.Mesh(tailGeo, bodyMat);
+      tail.position.z = 12;
+      g.add(tail);
+      // Bright halo signals "manned aircraft"
+      const haloMannedGeo = new THREE.SphereGeometry(28, 16, 12);
+      const haloMannedMat = new THREE.MeshBasicMaterial({
+        color: 0xff2d3d, transparent: true, opacity: 0.22, depthWrite: false
+      });
+      g.add(new THREE.Mesh(haloMannedGeo, haloMannedMat));
+    }
+
+    // Larger invisible click target — radius 120 (was 80). Hover and click
+    // both raycast against this sphere. 120 ft gives roughly a 30-45 pixel
+    // target at typical Aerial View distance — very forgiving even for fast-
+    // moving drones. Pickers may overlap slightly for drones closer than
+    // 240 ft apart; raycaster returns the closest hit so behavior stays sane.
+    const pickerGeo = new THREE.SphereGeometry(120, 16, 12);
+    const pickerMat = new THREE.MeshBasicMaterial({ visible: false });
+    const picker = new THREE.Mesh(pickerGeo, pickerMat);
+    picker.userData.droneRef = this;
+    g.add(picker);
+    this._picker = picker;
+
+    // Halo
+    const haloGeo = new THREE.SphereGeometry(22, 12, 8);
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: this.tier.color,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false
+    });
+    g.add(new THREE.Mesh(haloGeo, haloMat));
+
+    // Selection ring (hidden by default)
+    const ringGeo = new THREE.TorusGeometry(22, 1.2, 8, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff8a00,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    g.add(ring);
+    this._selectionRing = ring;
+
+    // Brand/UID label sprite
+    const labelSprite = makeDroneLabel(this.uid, this.tier.id, this.brandInfo.color);
+    labelSprite.position.y = 24;
+    g.add(labelSprite);
+    this._labelSprite = labelSprite;
+
+    // Trail
+    this._trailPositions = [];
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(60), 3));
+    const trailMat = new THREE.LineBasicMaterial({
+      color: this.tier.color,
+      transparent: true,
+      opacity: 0.4
+    });
+    this._trail = new THREE.Line(trailGeo, trailMat);
+    scene.add(this._trail);
+
+    // Altitude stem — thin vertical line from drone straight down to ground.
+    // Makes vertical separation visible at any camera angle (otherwise
+    // isometric projection collapses 45 ft of separation onto 8 screen pixels).
+    const stemGeo = new THREE.BufferGeometry();
+    stemGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const stemMat = new THREE.LineDashedMaterial({
+      color: this.tier.color,
+      transparent: true,
+      opacity: 0.42,
+      dashSize: 14,
+      gapSize: 10
+    });
+    this._stem = new THREE.Line(stemGeo, stemMat);
+    scene.add(this._stem);
+
+    // Protected airspace envelope — 80ft horizontal radius × 40ft vertical.
+    // No other drone is permitted within this bubble. Visualizing it lets
+    // the layman viewer SEE the safety margin instead of inferring it.
+    const PROT_R = 80, PROT_H = 40;
+    const protGeo = new THREE.CylinderGeometry(PROT_R, PROT_R, PROT_H, 24, 1, true);
+    const protMat = new THREE.MeshBasicMaterial({
+      color: this.tier.color,
+      transparent: true,
+      opacity: 0.07,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this._protEnvelope = new THREE.Mesh(protGeo, protMat);
+    g.add(this._protEnvelope);
+
+    scene.add(g);
+    this._mesh = g;
+    this._meshBody = body;
+  }
+
+  _setMeshPosition() {
+    this._mesh.position.set(this.x, this.y, this.z);
+    if (Math.abs(this._vx) + Math.abs(this._vz) > 0.5) {
+      const angle = Math.atan2(this._vx, this._vz);
+      this._mesh.rotation.y = angle;
+    }
+  }
+
+  // ===== Trailing separation (Claim 18 — many-to-many but predictive) =====
+  // Drones in the same corridor + direction + altitude band maintain spacing.
+  // If a drone catches up to a leader, throttle back to preserve gap.
+  _checkTrailing() {
+    if (!this._currentLane || !this._currentLaneAxis) return null;
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const other of state.drones) {
+      if (other === this) continue;
+      if (other._currentLane !== this._currentLane) continue;
+      if (other._currentLaneDir !== this._currentLaneDir) continue;
+      if (Math.abs(other.y - this.y) > CFG.TRAILING_ALT_TOL) continue;
+
+      // Is `other` ahead of `this` along the lane direction?
+      let aheadDist;
+      if (this._currentLaneAxis === 'NS') {
+        aheadDist = (other.z - this.z) * this._currentLaneDir;
+      } else {
+        aheadDist = (other.x - this.x) * this._currentLaneDir;
+      }
+      if (aheadDist <= 0) continue;
+      if (aheadDist < nearestDist) {
+        nearestDist = aheadDist;
+        nearest = other;
+      }
+    }
+    if (nearest && nearestDist < CFG.TRAILING_MIN_FT) {
+      return { leader: nearest, gap: nearestDist };
+    }
+    return null;
+  }
+
+  _moveToward(target, dt) {
+    const dx = target.x - this.x;
+    const dy = target.alt - this.y;
+    const dz = target.y - this.z;
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 1) return true;
+
+    let speed = (target.kind === 'CLIMB' || target.kind === 'APPROACH') ? CFG.CLIMB_FT_S
+              : (this.tier.id === 'P0') ? 65
+              : (this.tier.id === 'P1' && this.offCorridor) ? 45
+              : CFG.CRUISE_FT_S;
+
+    // Update lane tracking state for trailing detection
+    if (target.axis) {
+      this._currentLane = target.lane;
+      this._currentLaneAxis = target.axis;
+      this._currentLaneDir = target.dir;
+    } else if (target.kind === 'APPROACH' || target.kind === 'CLIMB' || target.kind === 'DIRECT') {
+      this._currentLane = null;
+      this._currentLaneAxis = null;
+      this._currentLaneDir = 0;
+    }
+
+    // Apply trailing separation throttle — aggressive ATC-style spacing
+    if (target.kind && target.kind.startsWith('CRUISE')) {
+      const trailing = this._checkTrailing();
+      if (trailing) {
+        const ratio = trailing.gap / CFG.TRAILING_MIN_FT;
+        if (ratio < 0.4)      speed *= 0.05;    // hard brake — basically hold
+        else if (ratio < 0.7) speed *= 0.35;    // moderate brake
+        else if (ratio < 1.0) speed *= 0.75;    // light brake
+        this.trailingThrottle = ratio;
+      } else {
+        this.trailingThrottle = 1.0;
+      }
+    } else {
+      this.trailingThrottle = 1.0;
+    }
+
+    const step = speed * dt;
+    if (step >= dist) {
+      this.x = target.x; this.y = target.alt; this.z = target.y;
+      this._vx = 0; this._vy = 0; this._vz = 0;
+      return true;
+    }
+    this._vx = (dx / dist) * speed;
+    this._vy = (dy / dist) * speed;
+    this._vz = (dz / dist) * speed;
+    this.x += this._vx * dt;
+    this.y += this._vy * dt;
+    this.z += this._vz * dt;
+    return false;
+  }
+
+  step(dt) {
+    if (state.simTimeMs < this.yieldUntil) {
+      if (this.yieldType === 'DESCEND') {
+        this.y = Math.max(80, this.y - 30 * dt);
+      } else if (this.yieldType === 'DISTANCE') {
+        const factor = 0.92;
+        this._vx *= factor; this._vy *= factor; this._vz *= factor;
+        this.x += this._vx * dt;
+        this.y += this._vy * dt;
+        this.z += this._vz * dt;
+      } else if (this.yieldType === 'DIVERT') {
+        this.x += (this._yieldSign || 1) * 12 * dt;
+      }
+      this._setMeshPosition();
+      this._updateTrail();
+      return;
+    }
+
+    switch (this.state) {
+      case 'SPAWNING': {
+        const target = this._plan[0];
+        const reached = this._moveToward(target, dt);
+        if (reached) {
+          this._waypointIdx = 1;
+          this.state = 'OUTBOUND';
+          this.stateStartedAt = state.simTimeMs;
+        }
+        break;
+      }
+      case 'OUTBOUND': {
+        if (this._waypointIdx >= this._plan.length) {
+          if (this._oneWay) {
+            // Manned aircraft: just exit after final waypoint
+            this.state = 'DESPAWNING';
+            break;
+          }
+          this.state = 'HOVERING';
+          this.stateStartedAt = state.simTimeMs;
+          this._vx = this._vy = this._vz = 0;
+          this._currentLane = null;
+          break;
+        }
+        const target = this._plan[this._waypointIdx];
+        const reached = this._moveToward(target, dt);
+        if (reached) this._waypointIdx++;
+        break;
+      }
+      case 'HOVERING': {
+        const t = (state.simTimeMs - this.stateStartedAt) / 1000;
+        this._vx = Math.sin(t * 0.4) * 0.6;
+        this._vz = Math.cos(t * 0.3) * 0.6;
+        this.x += this._vx * dt;
+        this.z += this._vz * dt;
+        if (state.simTimeMs - this.stateStartedAt > this.hoverDurationMs) {
+          this._plan = this._plan.slice(0, -1).reverse();
+          // Flip direction AND recalculate altitude for the flipped direction.
+          // Without recalculating altitude, a returning drone on the reversed
+          // lane would share altitude with an outbound opposing-direction
+          // drone — guaranteed head-on collision risk.
+          for (const wp of this._plan) {
+            if (wp.dir) {
+              wp.dir = -wp.dir;
+              if (wp.axis && wp.lane) {
+                // Parse "NS-3" → idx 2 for slot lookup
+                const laneIdx = parseInt(wp.lane.split('-')[1], 10) - 1;
+                wp.alt = getDirectionalAltitude(this.tier.id, wp.axis, wp.dir, laneIdx);
+              }
+            }
+          }
+          this._plan.push({ x: this.originBase.x, y: this.originBase.y, alt: 4, kind: 'LAND' });
+          this._waypointIdx = 0;
+          this.state = 'RETURNING';
+          this.stateStartedAt = state.simTimeMs;
+          logMissionEvent(this, 'HOVER COMPLETE · RETURN INITIATED');
+        }
+        break;
+      }
+      case 'RETURNING': {
+        if (this._waypointIdx >= this._plan.length) {
+          this.state = 'DESPAWNING';
+          break;
+        }
+        const target = this._plan[this._waypointIdx];
+        const reached = this._moveToward(target, dt);
+        if (reached) this._waypointIdx++;
+        break;
+      }
+      case 'DESPAWNING': {
+        return;
+      }
+    }
+
+    if (state.simTimeMs - this.spawnedAt > CFG.MISSION_TIMEOUT_MS) {
+      this.state = 'DESPAWNING';
+    }
+
+    this._setMeshPosition();
+    this._updateTrail();
+  }
+
+  _updateTrail() {
+    this._trailPositions.push(this.x, this.y, this.z);
+    if (this._trailPositions.length > 60) this._trailPositions.splice(0, 3);
+    const arr = this._trail.geometry.attributes.position.array;
+    arr.fill(0);
+    for (let i = 0; i < this._trailPositions.length; i++) {
+      arr[i] = this._trailPositions[i];
+    }
+    this._trail.geometry.setDrawRange(0, this._trailPositions.length / 3);
+    this._trail.geometry.attributes.position.needsUpdate = true;
+
+    // Altitude stem — from current drone position straight down to ground
+    if (this._stem) {
+      const sArr = this._stem.geometry.attributes.position.array;
+      sArr[0] = this.x; sArr[1] = this.y;  sArr[2] = this.z;
+      sArr[3] = this.x; sArr[4] = 1;       sArr[5] = this.z;
+      this._stem.geometry.attributes.position.needsUpdate = true;
+      this._stem.computeLineDistances();
+    }
+  }
+
+  distance(other) {
+    const dx = this.x - other.x;
+    const dy = this.y - other.y;
+    const dz = this.z - other.z;
+    return { horiz: Math.hypot(dx, dz), vert: Math.abs(dy), total: Math.hypot(dx, dy, dz) };
+  }
+
+  dispose() {
+    this._removed = true;
+    // Clear selection if this drone was selected
+    if (state.selectedDroneRef === this) {
+      state.selectedDroneUID = null;
+      state.selectedDroneRef = null;
+      updateLedgerHighlight();
+      updateSelectionHUD();
+    }
+    // Release TPO base slot if applicable
+    if (this.isTPO && this.originBase && this.originBase.currentDrone === this) {
+      this.originBase.currentDrone = null;
+      this.originBase.activeBlade = null;
+      this.originBase.lastRecoverAt = state.simTimeMs;
+      if (state.selectedBaseRef === this.originBase) updateBaseHUD();
+    }
+    scene.remove(this._mesh);
+    scene.remove(this._trail);
+    if (this._stem) {
+      scene.remove(this._stem);
+      this._stem.geometry.dispose();
+      this._stem.material.dispose();
+    }
+    this._mesh.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    this._trail.geometry.dispose();
+    this._trail.material.dispose();
+  }
+}
+
+// ===== Drone label sprite (UID + tier badge) ================================
+function makeDroneLabel(uid, tierId, brandColor) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 64;
+  const cx = c.getContext('2d');
+  cx.fillStyle = 'rgba(8,9,11,0.85)';
+  cx.fillRect(0, 0, 256, 64);
+  cx.strokeStyle = '#' + brandColor.toString(16).padStart(6, '0');
+  cx.lineWidth = 2;
+  cx.strokeRect(2, 2, 252, 60);
+  cx.fillStyle = '#' + brandColor.toString(16).padStart(6, '0');
+  cx.font = 'bold 20px "JetBrains Mono", monospace';
+  cx.textAlign = 'center';
+  cx.fillText(uid, 128, 28);
+  cx.fillStyle = '#9ca3af';
+  cx.font = '16px "JetBrains Mono", monospace';
+  cx.fillText(tierId, 128, 50);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(60, 15, 1);
+  return sprite;
+}
+
+// ===== Deconfliction engine (Claim 18) =====================================
+function runDeconfliction() {
+  const t0 = performance.now();
+  state.conflicts = [];
+  const drones = state.drones;
+
+  for (let i = 0; i < drones.length; i++) {
+    for (let j = i + 1; j < drones.length; j++) {
+      const a = drones[i], b = drones[j];
+      const d = a.distance(b);
+      if (d.horiz < CFG.SAFETY_THRESHOLD_FT && d.vert < CFG.SAFETY_VERTICAL_FT) {
+        state.conflicts.push({ a, b, dist: d });
+      }
+    }
+  }
+
+  for (const conflict of state.conflicts) {
+    const { a, b } = conflict;
+    const winner = a.tier.rank < b.tier.rank ? a : (b.tier.rank < a.tier.rank ? b : null);
+    if (!winner) continue;
+    const yielder = winner === a ? b : a;
+    if (state.simTimeMs < yielder.yieldUntil) continue;
+    issueYieldCommand(winner, yielder, conflict.dist);
+  }
+
+  const dt = performance.now() - t0;
+  state.latencyHistory.push(dt);
+  if (state.latencyHistory.length > 60) state.latencyHistory.shift();
+}
+
+function issueYieldCommand(holder, yielder, dist) {
+  const t0 = performance.now();
+  let cmdType;
+  if (dist.vert < 25 && yielder.y > 120)                cmdType = 'DESCEND';
+  else if (yielder.tier.rank >= 5)                      cmdType = 'DISENGAGE';
+  else if (dist.horiz < 120)                            cmdType = 'DIVERT';
+  else                                                  cmdType = 'DISTANCE';
+
+  const sig = sigDemo();
+  const cmdLatency = performance.now() - t0;
+
+  yielder.yieldUntil = state.simTimeMs + CFG.YIELD_DURATION_MS;
+  yielder.yieldType = cmdType;
+  yielder._yieldSign = Math.random() < 0.5 ? -1 : 1;
+  state.resolves++;
+  state.yieldCmdCount++;
+
+  // Classify what caused this conflict
+  const cause = classifyConflictCause(holder, yielder);
+
+  // Visualize the conflict
+  createConflictMarker(holder, yielder, cause, cmdType);
+
+  const ledgerEntry = {
+    seq: ++state.ledgerDepth,
+    ts: state.simTimeMs,
+    type: 'YIELD-CMD',
+    cmd: cmdType,
+    cause: cause,
+    fromAuth: 'BLADE-FT-RANCH-01',
+    holderUID: holder.uid,
+    holderTag: holder.tagShort,
+    holderTier: holder.tier.id,
+    yielderUID: yielder.uid,
+    yielderTag: yielder.tagShort,
+    yielderTier: yielder.tier.id,
+    distHoriz: dist.horiz.toFixed(1),
+    distVert: dist.vert.toFixed(1),
+    sig: sig,
+    latencyMs: cmdLatency.toFixed(2)
+  };
+  state.ledger.push(ledgerEntry);
+  logEvent(ledgerEntry);
+}
+
+// ===== Conflict cause classifier ============================================
+// Conflicts are EXCEPTIONS — TPO is designed to make them structurally rare.
+// When one occurs, classify why so the audit ledger and operator can see what
+// caused the deviation from the normal ZERO-CONFLICT state.
+function classifyConflictCause(a, b) {
+  // Manned aircraft intrusion is the canonical exception
+  if (a.tier.id === 'P0' || b.tier.id === 'P0' || a.tier.id === 'P00' || b.tier.id === 'P00') {
+    return 'MANNED AIRCRAFT · CANNOT SEE DRONES';
+  }
+  // LCR direct-line override (intentional bypass for life-saving missions)
+  if ((a.offCorridor && a.tier.id === 'P1') || (b.offCorridor && b.tier.id === 'P1')) {
+    return 'P1 LCR DIRECT-LINE · LIFE-CRITICAL OVERRIDE';
+  }
+  // Off-corridor flight (errant or special)
+  if (a.offCorridor || b.offCorridor) {
+    return 'OFF-CORRIDOR FLIGHT · UNREGISTERED ROUTE';
+  }
+  // Both drones near destination or hovering
+  if (a.state === 'HOVERING' || b.state === 'HOVERING') {
+    return 'DESTINATION PROXIMITY · HOVER OVERLAP';
+  }
+  if (a.state === 'OUTBOUND' && b.state === 'OUTBOUND') {
+    // Look at waypoint kinds
+    const wpA = a._plan && a._plan[a._waypointIdx];
+    const wpB = b._plan && b._plan[b._waypointIdx];
+    if ((wpA && wpA.kind === 'APPROACH') || (wpB && wpB.kind === 'APPROACH')) {
+      return 'FINAL APPROACH OVERLAP';
+    }
+    if ((wpA && wpA.kind && wpA.kind.startsWith('JOIN')) || (wpB && wpB.kind && wpB.kind.startsWith('JOIN'))) {
+      return 'CORRIDOR TRANSITION · INTERSECTION';
+    }
+  }
+  return 'OFF-PLAN DEVIATION · INVESTIGATE';
+}
+
+// ===== Conflict visualization ===============================================
+const ACTIVE_CONFLICTS = [];
+const CONFLICT_DISPLAY_MS = 5000;
+
+function createConflictMarker(a, b, cause, cmdType) {
+  const group = new THREE.Group();
+
+  // Red pulsing ring around drone A
+  const ringAGeo = new THREE.TorusGeometry(28, 1.8, 8, 32);
+  const ringAMat = new THREE.MeshBasicMaterial({
+    color: 0xff2d3d, transparent: true, opacity: 0.95, depthWrite: false
+  });
+  const ringA = new THREE.Mesh(ringAGeo, ringAMat);
+  ringA.rotation.x = Math.PI / 2;
+  ringA.position.set(a.x, a.y, a.z);
+  group.add(ringA);
+
+  // Red pulsing ring around drone B
+  const ringBGeo = new THREE.TorusGeometry(28, 1.8, 8, 32);
+  const ringBMat = new THREE.MeshBasicMaterial({
+    color: 0xff2d3d, transparent: true, opacity: 0.95, depthWrite: false
+  });
+  const ringB = new THREE.Mesh(ringBGeo, ringBMat);
+  ringB.rotation.x = Math.PI / 2;
+  ringB.position.set(b.x, b.y, b.z);
+  group.add(ringB);
+
+  // Red connecting line
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(a.x, a.y, a.z),
+    new THREE.Vector3(b.x, b.y, b.z)
+  ]);
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xff2d3d, transparent: true, opacity: 0.85 });
+  const line = new THREE.Line(lineGeo, lineMat);
+  group.add(line);
+
+  scene.add(group);
+
+  ACTIVE_CONFLICTS.push({
+    group, ringA, ringB, line, lineGeo,
+    a, b, cause, cmdType,
+    createdAt: state.simTimeMs,
+    expires: state.simTimeMs + CONFLICT_DISPLAY_MS
+  });
+}
+
+function updateConflictMarkers() {
+  for (let i = ACTIVE_CONFLICTS.length - 1; i >= 0; i--) {
+    const c = ACTIVE_CONFLICTS[i];
+    if (state.simTimeMs >= c.expires) {
+      scene.remove(c.group);
+      c.group.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      ACTIVE_CONFLICTS.splice(i, 1);
+      continue;
+    }
+    // Track drone positions (drones may still be moving)
+    if (c.a && !c.a._removed) c.ringA.position.set(c.a.x, c.a.y, c.a.z);
+    if (c.b && !c.b._removed) c.ringB.position.set(c.b.x, c.b.y, c.b.z);
+
+    if (c.a && c.b && !c.a._removed && !c.b._removed) {
+      const positions = c.lineGeo.attributes.position.array;
+      positions[0] = c.a.x; positions[1] = c.a.y; positions[2] = c.a.z;
+      positions[3] = c.b.x; positions[4] = c.b.y; positions[5] = c.b.z;
+      c.lineGeo.attributes.position.needsUpdate = true;
+    }
+
+    // Pulse intensity + fade out
+    const elapsed = state.simTimeMs - c.createdAt;
+    const fadeRatio = 1 - (elapsed / CONFLICT_DISPLAY_MS);
+    const pulse = (Math.sin(elapsed / 120) + 1) / 2;
+    const opacity = fadeRatio * (0.55 + pulse * 0.45);
+    c.ringA.material.opacity = opacity;
+    c.ringB.material.opacity = opacity;
+    c.line.material.opacity = opacity * 0.85;
+    const ringScale = 1 + pulse * 0.25;
+    c.ringA.scale.setScalar(ringScale);
+    c.ringB.scale.setScalar(ringScale);
+  }
+  updateConflictHUD();
+}
+
+// ===== Event log rendering =================================================
+const $log = document.getElementById('logStream');
+
+function logEvent(e) {
+  const div = document.createElement('div');
+  const cls = e.cmd === 'DISENGAGE' ? 'crit' : (e.cmd === 'DIVERT' || e.cmd === 'DESCEND') ? 'warn' : 'info';
+  div.className = 'log-entry ' + cls;
+  if (e.holderUID) div.setAttribute('data-holder-uid', e.holderUID);
+  if (e.yielderUID) div.setAttribute('data-yielder-uid', e.yielderUID);
+  const ts = formatSimTime(e.ts);
+  const holderColor = '#' + TIER_MAP[e.holderTier].color.toString(16).padStart(6, '0');
+  const yielderColor = '#' + TIER_MAP[e.yielderTier].color.toString(16).padStart(6, '0');
+  div.innerHTML = `
+    <div class="log-head">
+      <span class="log-type ${cls}">${e.type} · ${e.cmd}</span>
+      <span class="log-time">T+${ts}</span>
+    </div>
+    <div class="log-body">
+      <div class="log-row"><span class="log-key">from</span><span class="log-val">${e.fromAuth}</span></div>
+      <div class="log-row"><span class="log-key">→ yield</span><span class="log-val">${e.yielderUID || e.yielderTag} · <span style="color:${yielderColor}">${e.yielderTier}</span></span></div>
+      <div class="log-row"><span class="log-key">for</span><span class="log-val">${e.holderUID || e.holderTag} · <span style="color:${holderColor}">${e.holderTier}</span></span></div>
+      ${e.cause ? `<div class="log-row"><span class="log-key">cause</span><span class="log-val" style="color:#ff8a99;font-weight:600">${e.cause}</span></div>` : ''}
+      <div class="log-row"><span class="log-key">sep</span><span class="log-val">${e.distHoriz} ft H · ${e.distVert} ft V</span></div>
+      <div class="log-row"><span class="log-key">lat</span><span class="log-val">${e.latencyMs} ms</span></div>
+      <div class="log-sig">sig 0x${e.sig.slice(0,16)}…${e.sig.slice(-8)}</div>
+    </div>
+  `;
+  if (e.holderUID === state.selectedDroneUID || e.yielderUID === state.selectedDroneUID) {
+    div.classList.add('selected');
+  }
+  $log.insertBefore(div, $log.firstChild);
+  while ($log.children.length > 80) $log.removeChild($log.lastChild);
+}
+
+function logMission(d) {
+  const div = document.createElement('div');
+  div.className = 'log-entry mission';
+  div.setAttribute('data-uid', d.uid);
+  const ts = formatSimTime(state.simTimeMs);
+  const tierColor = '#' + d.tier.color.toString(16).padStart(6, '0');
+  const brandColor = '#' + d.brandInfo.color.toString(16).padStart(6, '0');
+  let corridorInfo;
+  if (d.offCorridor) {
+    corridorInfo = `OVERRIDE · ${d.tier.id === 'P0' ? 'MANNED' : 'LCR DIRECT'} @ ${d.cruiseAlt.toFixed(0)}ft`;
+  } else {
+    const nsWp = d._plan.find(w => w.kind === 'CRUISE-NS');
+    const ewWp = d._plan.find(w => w.kind === 'CRUISE-EW');
+    const nsTxt = nsWp ? `${nsWp.lane} ${nsWp.dir > 0 ? 'N' : 'S'} @ ${nsWp.alt.toFixed(0)}ft` : '—';
+    const ewTxt = ewWp ? `${ewWp.lane} ${ewWp.dir > 0 ? 'E' : 'W'} @ ${ewWp.alt.toFixed(0)}ft` : '—';
+    corridorInfo = `${nsTxt} → ${ewTxt}`;
+  }
+  div.innerHTML = `
+    <div class="log-head">
+      <span class="log-type mission">REGISTRAR · FLIGHT PLAN ISSUED</span>
+      <span class="log-time">T+${ts}</span>
+    </div>
+    <div class="log-body">
+      <div class="log-row"><span class="log-key">uid</span><span class="log-val"><span style="color:${brandColor}">${d.uid}</span></span></div>
+      <div class="log-row"><span class="log-key">operator</span><span class="log-val">${d.brandInfo.name}${d.isTPO ? ' · TPO' : ''}</span></div>
+      <div class="log-row"><span class="log-key">peck tag</span><span class="log-val">${d.tagShort}</span></div>
+      <div class="log-row"><span class="log-key">tier</span><span class="log-val"><span style="color:${tierColor}">${d.tier.id} · ${d.tier.name}</span></span></div>
+      <div class="log-row"><span class="log-key">origin</span><span class="log-val">${d.originBase.id}</span></div>
+      <div class="log-row"><span class="log-key">dest</span><span class="log-val">(${d.destination.x.toFixed(0)}, ${d.destination.y.toFixed(0)}) ft</span></div>
+      <div class="log-row"><span class="log-key">route</span><span class="log-val">${corridorInfo}</span></div>
+      <div class="log-row"><span class="log-key">hover</span><span class="log-val">${(d.hoverDurationMs/1000).toFixed(0)}s on station</span></div>
+      <div class="log-sig">pk 0x${d.pubKey.slice(0,16)}…${d.pubKey.slice(-8)}</div>
+    </div>
+  `;
+  if (d.uid === state.selectedDroneUID) div.classList.add('selected');
+  $log.insertBefore(div, $log.firstChild);
+  while ($log.children.length > 80) $log.removeChild($log.lastChild);
+}
+
+function logMissionEvent(d, msg) {
+  const div = document.createElement('div');
+  div.className = 'log-entry info';
+  div.innerHTML = `
+    <div class="log-head">
+      <span class="log-type info">${msg}</span>
+      <span class="log-time">T+${formatSimTime(state.simTimeMs)}</span>
+    </div>
+    <div class="log-body">
+      <div class="log-row"><span class="log-key">tag</span><span class="log-val">${d.tagShort} · ${d.tier.id}</span></div>
+    </div>
+  `;
+  $log.insertBefore(div, $log.firstChild);
+  while ($log.children.length > 80) $log.removeChild($log.lastChild);
+}
+
+function logSystem(msg) {
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `
+    <div class="log-head">
+      <span class="log-type">SYSTEM</span>
+      <span class="log-time">T+${formatSimTime(state.simTimeMs)}</span>
+    </div>
+    <div class="log-body">${msg}</div>
+  `;
+  $log.insertBefore(div, $log.firstChild);
+}
+
+// ===== Tier list ============================================================
+const $tierList = document.getElementById('tierList');
+const $operatorList = document.getElementById('operatorList');
+function renderTierList() {
+  const counts = {};
+  for (const t of TIERS) counts[t.id] = 0;
+  for (const d of state.drones) counts[d.tier.id]++;
+  $tierList.innerHTML = '';
+  for (const t of TIERS) {
+    const row = document.createElement('div');
+    const colorHex = '#' + t.color.toString(16).padStart(6, '0');
+    row.className = 'tier-row' + (counts[t.id] > 0 ? ' active' : '');
+    row.innerHTML = `
+      <div style="display:flex; align-items:center; gap:6px;">
+        <div class="tier-swatch" style="background:${colorHex}; color:${colorHex}"></div>
+        <span class="tier-id" style="color:${colorHex}">${t.id}</span>
+      </div>
+      <span class="tier-name">${t.name}</span>
+      <span class="tier-count">${counts[t.id]}</span>
+    `;
+    $tierList.appendChild(row);
+  }
+
+  // Operator list
+  const opCounts = {};
+  for (const k of Object.keys(BRANDS)) opCounts[k] = 0;
+  for (const d of state.drones) {
+    if (opCounts[d.brand] !== undefined) opCounts[d.brand]++;
+  }
+  $operatorList.innerHTML = '';
+  for (const [k, info] of Object.entries(BRANDS)) {
+    const row = document.createElement('div');
+    const colorHex = '#' + info.color.toString(16).padStart(6, '0');
+    row.className = 'tier-row' + (opCounts[k] > 0 ? ' active' : '');
+    row.innerHTML = `
+      <div style="display:flex; align-items:center; gap:6px;">
+        <div class="tier-swatch" style="background:${colorHex}; color:${colorHex}"></div>
+        <span class="tier-id" style="color:${colorHex}">${k}</span>
+      </div>
+      <span class="tier-name">${info.name}${info.tpo ? ' · TPO' : ''}</span>
+      <span class="tier-count">${opCounts[k]}</span>
+    `;
+    $operatorList.appendChild(row);
+  }
+}
+
+// ===== HUD ==================================================================
+const $simTime = document.getElementById('simTime');
+const $ovParts = document.getElementById('ovParticipants');
+const $ovConf = document.getElementById('ovConflicts');
+const $ovRes = document.getElementById('ovResolves');
+const $ovLat = document.getElementById('ovLatency');
+const $ovLed = document.getElementById('ovLedger');
+const $ovMissions = document.getElementById('ovMissions');
+const $statResolve = document.getElementById('statResolve');
+const $statCmds = document.getElementById('statCmds');
+const $statComplete = document.getElementById('statComplete');
+const $statInflight = document.getElementById('statInflight');
+
+function updateHUD() {
+  $simTime.textContent = formatSimTime(state.simTimeMs);
+  $ovParts.textContent = state.drones.length;
+  $ovConf.textContent = state.conflicts.length;
+  $ovRes.textContent = state.resolves;
+  $ovMissions.textContent = state.missionCount;
+  const avgLat = state.latencyHistory.length > 0
+    ? state.latencyHistory.reduce((a,b)=>a+b,0) / state.latencyHistory.length
+    : 0;
+  $ovLat.textContent = avgLat.toFixed(2) + ' ms';
+  $ovLed.textContent = state.ledgerDepth;
+  $statResolve.innerHTML = avgLat.toFixed(1) + '<span class="stat-unit">ms</span>';
+  $statCmds.textContent = state.yieldCmdCount;
+  $statComplete.textContent = state.missionsCompleted;
+  $statInflight.textContent = state.drones.length;
+}
+
+// ===== Mission spawning ====================================================
+// TPO Blades launch ONLY P1 LCR missions (Revive Drones life-saving mandate).
+// No commercial. No surveillance. No third-party rental. Blades are the
+// Sovereign Node infrastructure that governs the airspace — they don't operate
+// for hire. Surveillance, commercial, and other operators run their own
+// depots and equipment; they only consume the Registrar service.
+function spawnTPOMission(tierId) {
+  if (state.drones.length >= CFG.MAX_PARTICIPANTS) return null;
+  const base = findAvailableBase();
+  if (!base) return null;
+  const d = new Drone('P1', { brand: 'RD', originBase: base });
+  if (d._abort) {
+    logSystem('TPO LCR spawn DEFERRED · airspace congestion · ' + base.id);
+    return null;
+  }
+  // Pick which Blade tenant's mission this is — random rotation across the 4
+  const bladeIdx = Math.floor(Math.random() * base.blades.length);
+  d.activeBlade = base.blades[bladeIdx];
+  base.activeBlade = d.activeBlade;
+  base.currentDrone = d;
+  base.lastLaunchAt = state.simTimeMs;
+  state.drones.push(d);
+  logMission(d);
+  return d;
+}
+
+// External operator spawn: from offscreen depot, governed by TPO Registrar.
+function spawnExternalMission(brandKey) {
+  if (state.drones.length >= CFG.MAX_PARTICIPANTS) return null;
+  if (!brandKey) {
+    // Pick a non-TPO brand at random weighted by typical traffic share
+    const weights = {
+      'ZIP': 1,                                  // P1 medical LCR (rare, critical)
+      'SKY': 2, 'FBI': 1,                        // P2 surveillance
+      'AXN': 2, 'CBP': 1,                        // P3 law enforcement
+      'AMZ': 5, 'WNG': 4, 'UPS': 3, 'MTR': 2,    // P4 commercial
+      'UCI': 1, 'JPL': 1                         // P5 recreational/scientific
+    };
+    const total = Object.values(weights).reduce((a,b)=>a+b, 0);
+    let r = Math.random() * total;
+    for (const [k, w] of Object.entries(weights)) {
+      r -= w;
+      if (r <= 0) { brandKey = k; break; }
+    }
+  }
+  const origin = EXTERNAL_OPERATOR_ORIGINS.find(o => o.brand === brandKey)
+              || EXTERNAL_OPERATOR_ORIGINS[Math.floor(Math.random() * EXTERNAL_OPERATOR_ORIGINS.length)];
+  const tierId = BRANDS[brandKey].tierPref[Math.floor(Math.random() * BRANDS[brandKey].tierPref.length)];
+
+  const d = new Drone(tierId, {
+    brand: brandKey,
+    originBase: { id: origin.id, name: origin.name, x: origin.x, y: origin.y },
+    isExternal: true
+  });
+  if (d._abort) {
+    logSystem(`${brandKey} spawn DEFERRED · airspace congestion`);
+    return null;
+  }
+  state.drones.push(d);
+  logMission(d);
+  return d;
+}
+
+// Generic dispatcher used by the right-panel buttons
+function spawnMission(tierId) {
+  // RD/TPO bases handle P1 LCR ONLY. All other tiers go external.
+  if (tierId === 'P1') {
+    const d = spawnTPOMission(tierId);
+    if (d) return d;
+  }
+  // Find a brand that can fly this tier
+  const candidates = Object.entries(BRANDS).filter(([k, b]) => !b.tpo && b.tierPref.includes(tierId));
+  if (candidates.length > 0) {
+    const [k] = candidates[Math.floor(Math.random() * candidates.length)];
+    return spawnExternalMission(k);
+  }
+  return spawnExternalMission(null);
+}
+
+// John Wayne Airport approach/departure injection.
+// Manned aircraft cruise ABOVE The Low (>500 ft) and only descend through it
+// when actively landing at an airport. The Registrar receives the flight plan
+// via ADS-B/UTM/USS feeds (simulated here) and pre-warns any drones in the
+// approach cone to YIELD DESCEND.
+//
+// Eight scenarios randomly mixed each spawn:
+//  • LAND-N-MAIN  — landing Rwy 20R (approach from north, wind from SW)
+//  • LAND-N-GA    — landing Rwy 20L (general aviation, smaller aircraft)
+//  • LAND-S-MAIN  — landing Rwy 02R (reverse wind condition)
+//  • LAND-S-GA    — landing Rwy 02L (GA reverse wind)
+//  • TAKE-S       — departure Rwy 20 climbing southbound (most common)
+//  • TAKE-N       — departure Rwy 02 climbing northbound (reverse wind)
+//  • TRANSIT-EW   — high-altitude transit eastbound at 1800ft (overflight)
+//  • TRANSIT-WE   — high-altitude transit westbound at 1800ft
+// Transits stay above 1500 ft — drones in The Low (<500 ft) never interact.
+
+let _p0SpawnQueue = [];
+const P0_MIN_SPAWN_GAP_MS = 5000;
+let _lastP0SpawnAt = -999999;
+
+function injectP0() {
+  // Stagger: if pressed faster than P0_MIN_SPAWN_GAP_MS apart, queue it
+  // and process when the previous aircraft has had room to depart.
+  _p0SpawnQueue.push(state.simTimeMs);
+  _drainP0Queue();
+}
+
+function _drainP0Queue() {
+  while (_p0SpawnQueue.length > 0) {
+    if (state.simTimeMs - _lastP0SpawnAt < P0_MIN_SPAWN_GAP_MS) {
+      // Wait — try again next tick
+      return;
+    }
+    if (state.drones.length >= CFG.MAX_PARTICIPANTS) {
+      _p0SpawnQueue.shift();
+      continue;
+    }
+    _p0SpawnQueue.shift();
+    _spawnP0Random();
+    _lastP0SpawnAt = state.simTimeMs;
+  }
+}
+
+function _spawnP0Random() {
+  const lim = AIRSPACE.HALF_WIDTH_FT;
+  // Weighted scenario pick — landings/takeoffs more common than transits
+  const scenarios = [
+    'LAND-N-MAIN','LAND-N-MAIN',     // ×2 weight
+    'LAND-N-GA',
+    'LAND-S-MAIN',
+    'LAND-S-GA',
+    'TAKE-S','TAKE-S',               // ×2 weight (departures common)
+    'TAKE-N',
+    'TRANSIT-EW',
+    'TRANSIT-WE'
+  ];
+  const sc = scenarios[Math.floor(Math.random() * scenarios.length)];
+
+  let plan, origin, dest, label, runwayLabel;
+
+  // Main runway centerline at x=-130, GA at x=+80 (per buildJohnWayneAirport)
+  if (sc === 'LAND-N-MAIN' || sc === 'LAND-N-GA') {
+    const rx = (sc === 'LAND-N-MAIN') ? -130 : 80;
+    runwayLabel = (sc === 'LAND-N-MAIN') ? '20R' : '20L';
+    origin = { id: 'KSNA-INBOUND-N', name: `JWA Inbound · Rwy ${runwayLabel} · from N`, x: rx, y: lim - 50 };
+    dest = { x: rx, y: -680 };
+    plan = [
+      { x: rx, y: lim - 50, alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y:  1500,    alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y:  1100,    alt:  600, kind: 'APPROACH' },
+      { x: rx, y:   900,    alt:  280, kind: 'APPROACH' },
+      { x: rx, y:   680,    alt:    8, kind: 'APPROACH' },
+      { x: rx, y:  -680,    alt:    4, kind: 'CRUISE-NS' }
+    ];
+    label = 'JWA-IN-' + Math.floor(Math.random() * 900 + 100);
+  } else if (sc === 'LAND-S-MAIN' || sc === 'LAND-S-GA') {
+    const rx = (sc === 'LAND-S-MAIN') ? -130 : 80;
+    runwayLabel = (sc === 'LAND-S-MAIN') ? '02R' : '02L';
+    origin = { id: 'KSNA-INBOUND-S', name: `JWA Inbound · Rwy ${runwayLabel} · from S`, x: rx, y: -(lim - 50) };
+    dest = { x: rx, y: 680 };
+    plan = [
+      { x: rx, y: -(lim - 50), alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y: -1500,       alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y: -1100,       alt:  600, kind: 'APPROACH' },
+      { x: rx, y:  -900,       alt:  280, kind: 'APPROACH' },
+      { x: rx, y:  -680,       alt:    8, kind: 'APPROACH' },
+      { x: rx, y:   680,       alt:    4, kind: 'CRUISE-NS' }
+    ];
+    label = 'JWA-IN-' + Math.floor(Math.random() * 900 + 100);
+  } else if (sc === 'TAKE-S') {
+    const rx = Math.random() < 0.5 ? -130 : 80;
+    runwayLabel = rx === -130 ? '20R' : '20L';
+    origin = { id: 'KSNA-DEPART-S', name: `JWA Departure · Rwy ${runwayLabel} · climb S`, x: rx, y: 680 };
+    dest = { x: rx, y: -(lim - 50) };
+    plan = [
+      { x: rx, y:  680, alt:    5, kind: 'CRUISE-NS' },
+      { x: rx, y: -680, alt:    8, kind: 'APPROACH' },
+      { x: rx, y: -1100, alt:  280, kind: 'CRUISE-NS' },
+      { x: rx, y: -1500, alt:  650, kind: 'CRUISE-NS' },
+      { x: rx, y: -1900, alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y: -(lim - 50), alt: 1300, kind: 'APPROACH' }
+    ];
+    label = 'JWA-OUT-' + Math.floor(Math.random() * 900 + 100);
+  } else if (sc === 'TAKE-N') {
+    const rx = Math.random() < 0.5 ? -130 : 80;
+    runwayLabel = rx === -130 ? '02R' : '02L';
+    origin = { id: 'KSNA-DEPART-N', name: `JWA Departure · Rwy ${runwayLabel} · climb N`, x: rx, y: -680 };
+    dest = { x: rx, y: lim - 50 };
+    plan = [
+      { x: rx, y: -680, alt:    5, kind: 'CRUISE-NS' },
+      { x: rx, y:  680, alt:    8, kind: 'APPROACH' },
+      { x: rx, y: 1100, alt:  280, kind: 'CRUISE-NS' },
+      { x: rx, y: 1500, alt:  650, kind: 'CRUISE-NS' },
+      { x: rx, y: 1900, alt: 1300, kind: 'CRUISE-NS' },
+      { x: rx, y: lim - 50, alt: 1300, kind: 'APPROACH' }
+    ];
+    label = 'JWA-OUT-' + Math.floor(Math.random() * 900 + 100);
+  } else if (sc === 'TRANSIT-EW') {
+    // High-altitude transit — westbound to eastbound, well above The Low,
+    // not landing at KSNA, just overflying
+    const cruiseY = (Math.random() - 0.5) * lim * 1.4;   // varied lateral entry
+    origin = { id: 'TRANSIT-W', name: `Transit · Westbound origin · 1800 ft`, x: -(lim - 50), y: cruiseY };
+    dest = { x: lim - 50, y: cruiseY };
+    plan = [
+      { x: -(lim - 50), y: cruiseY, alt: 1800, kind: 'CRUISE-EW' },
+      { x:    lim - 50, y: cruiseY, alt: 1800, kind: 'APPROACH' }
+    ];
+    label = 'TRANSIT-' + Math.floor(Math.random() * 900 + 100);
+    runwayLabel = 'OVRFLT';
+  } else { // TRANSIT-WE
+    const cruiseY = (Math.random() - 0.5) * lim * 1.4;
+    origin = { id: 'TRANSIT-E', name: `Transit · Eastbound origin · 1800 ft`, x: lim - 50, y: cruiseY };
+    dest = { x: -(lim - 50), y: cruiseY };
+    plan = [
+      { x:  lim - 50, y: cruiseY, alt: 1800, kind: 'CRUISE-EW' },
+      { x: -(lim-50), y: cruiseY, alt: 1800, kind: 'APPROACH' }
+    ];
+    label = 'TRANSIT-' + Math.floor(Math.random() * 900 + 100);
+    runwayLabel = 'OVRFLT';
+  }
+
+  const d = new Drone('P0', {
+    brand: 'RD',
+    uid: label,
+    originBase: origin,
+    destination: dest,
+    offCorridor: true,
+    isExternal: true,
+    forcePlan: plan
+  });
+  state.drones.push(d);
+  logMission(d);
+  const desc = (sc.startsWith('LAND')) ? 'KSNA INBOUND'
+             : (sc.startsWith('TAKE')) ? 'KSNA DEPARTURE'
+             : 'HIGH-ALTITUDE TRANSIT';
+  logSystem(`ADS-B · ${desc} · ${runwayLabel} · ${d.uid}`);
+}
+
+function injectLCR() {
+  // LCR Narcan direct-line override — uses TPO base if available
+  const base = findAvailableBase() || BASES[0];
+  if (state.drones.length >= CFG.MAX_PARTICIPANTS) return;
+  const ang = Math.random() * Math.PI * 2;
+  const r = 1200 + Math.random() * 600;
+  const dest = { x: Math.cos(ang) * r, y: Math.sin(ang) * r };
+  const d = new Drone('P1', { brand: 'RD', originBase: base, destination: dest, offCorridor: true });
+  if (base.currentDrone === null) {
+    base.currentDrone = d;
+    base.lastLaunchAt = state.simTimeMs;
+  }
+  state.drones.push(d);
+  logMission(d);
+  logSystem('P1 LCR NARCAN dispatch · direct-line OVERRIDE · corridor bypass authorized');
+}
+
+// Auto-spawn loop: TPO and external operate on independent intervals
+let _lastTPOSpawn = -999999;
+let _lastExtSpawn = -999999;
+function maybeAutoSpawn() {
+  if (state.simTimeMs - _lastTPOSpawn >= CFG.TPO_SPAWN_INTERVAL_MS) {
+    if (state.drones.length < CFG.MAX_PARTICIPANTS - 5) {
+      const d = spawnTPOMission(null);
+      if (d) _lastTPOSpawn = state.simTimeMs;
+    }
+  }
+  if (state.simTimeMs - _lastExtSpawn >= CFG.EXTERNAL_SPAWN_INTERVAL_MS) {
+    if (state.drones.length < CFG.MAX_PARTICIPANTS - 2) {
+      spawnExternalMission(null);
+      _lastExtSpawn = state.simTimeMs;
+    }
+  }
+}
+
+// ===== Resize handling =====================================================
+function onResize() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  renderer.setSize(rect.width, rect.height, false);
+  camera.aspect = rect.width / rect.height;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+
+// ===== Main loop ============================================================
+const MAX_STEP_SEC = 0.05;   // Physics sub-step cap: drones never step more than 50ms at once.
+                             // At high sim speeds we run multiple sub-steps per frame for stability.
+let lastFrame = performance.now();
+let tickAccumulator = 0;
+
+function loop(now) {
+  const frameDelta = now - lastFrame;
+  lastFrame = now;
+
+  if (state.running) {
+    const scaledDelta = frameDelta * state.speed;
+    state.simTimeMs += scaledDelta;
+    tickAccumulator += scaledDelta;
+
+    // Sub-step physics so trailing/separation logic remains stable at any sim speed
+    const totalDtSec = scaledDelta / 1000;
+    const numSteps = Math.max(1, Math.ceil(totalDtSec / MAX_STEP_SEC));
+    const subDt = totalDtSec / numSteps;
+    for (let s = 0; s < numSteps; s++) {
+      for (const d of state.drones) d.step(subDt);
+    }
+
+    // Despawn drones marked complete
+    for (let i = state.drones.length - 1; i >= 0; i--) {
+      if (state.drones[i].state === 'DESPAWNING') {
+        state.drones[i].dispose();
+        state.missionsCompleted++;
+        state.drones.splice(i, 1);
+      }
+    }
+
+    // Deconfliction every CFG.TICK_MS (10 Hz)
+    while (tickAccumulator >= CFG.TICK_MS) {
+      runDeconfliction();
+      tickAccumulator -= CFG.TICK_MS;
+    }
+
+    // Update conflict visualization (red rings, lines, fade timers, HUD panel)
+    updateConflictMarkers();
+
+    // Auto-spawn missions
+    maybeAutoSpawn();
+    // Drain any queued P0 manned-aircraft spawns (rate-limited)
+    _drainP0Queue();
+
+    // Pulse base beacons
+    for (const base of BASES) {
+      if (base.beaconHalo) {
+        const pulse = (Math.sin(state.simTimeMs / 400) + 1) / 2;
+        base.beaconHalo.scale.setScalar(1 + pulse * 0.4);
+      }
+      // Pulse selection ring on selected base
+      if (base.selectionRing) {
+        if (base === state.selectedBaseRef) {
+          const pulse = (Math.sin(state.simTimeMs / 200) + 1) / 2;
+          base.selectionRing.material.opacity = 0.6 + pulse * 0.4;
+          base.selectionRing.scale.setScalar(1 + pulse * 0.08);
+        } else {
+          base.selectionRing.material.opacity = 0;
+        }
+      }
+    }
+    if (state.selectedBaseRef) updateBaseHUD();
+
+    // Pulse selection ring on selected drone + enlarge body + refresh HUD
+    for (const d of state.drones) {
+      if (d._selectionRing) {
+        if (d === state.selectedDroneRef) {
+          const pulse = (Math.sin(state.simTimeMs / 200) + 1) / 2;
+          d._selectionRing.material.opacity = 0.5 + pulse * 0.5;
+          d._selectionRing.scale.setScalar(1 + pulse * 0.15);
+          // Enlarge drone body so you can actually see it
+          if (d._meshBody && d._meshBody.scale.x < 2.0) d._meshBody.scale.setScalar(2.2);
+        } else {
+          d._selectionRing.material.opacity = 0;
+          if (d._meshBody && d._meshBody.scale.x > 1.05) d._meshBody.scale.setScalar(1.0);
+        }
+      }
+    }
+    if (state.selectedDroneRef) updateSelectionHUD();
+    updateTracer();
+
+    // Clamp camera above ground level — allow ground-eye view without going through floor
+    if (camera.position.y < 25) camera.position.y = 25;
+
+    if (state.drones.length !== state._lastTierCount) {
+      renderTierList();
+      state._lastTierCount = state.drones.length;
+    }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+  updateHUD();
+  requestAnimationFrame(loop);
+}
+
+// ===== Click selection =====================================================
+const raycaster = new THREE.Raycaster();
+const mouseVec = new THREE.Vector2();
+let _clickStartPos = null;
+
+canvas.addEventListener('mousedown', (e) => {
+  _clickStartPos = { x: e.clientX, y: e.clientY };
+});
+
+// Hover detection — temporary path tracer while pointer is over a drone
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseVec, camera);
+  const droneTargets = [];
+  for (const d of state.drones) {
+    if (d._picker) droneTargets.push(d._picker);
+    if (d._meshBody) droneTargets.push(d._meshBody);
+  }
+  const hits = raycaster.intersectObjects(droneTargets, false);
+  state.hoveredDroneRef = (hits.length > 0) ? hits[0].object.userData.droneRef : null;
+  canvas.style.cursor = state.hoveredDroneRef ? 'pointer' : 'default';
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  if (!_clickStartPos) return;
+  const dx = e.clientX - _clickStartPos.x;
+  const dy = e.clientY - _clickStartPos.y;
+  _clickStartPos = null;
+  // 8 px tolerance — accommodates trackpad twitch / minor camera drag during click
+  if (Math.hypot(dx, dy) > 8) return;
+
+  const rect = canvas.getBoundingClientRect();
+  mouseVec.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseVec, camera);
+
+  // Pickable targets: drones first (smaller, more specific), then bases
+  const droneTargets = [];
+  for (const d of state.drones) {
+    if (d._picker) droneTargets.push(d._picker);
+    if (d._meshBody) droneTargets.push(d._meshBody);
+  }
+  const droneHits = raycaster.intersectObjects(droneTargets, false);
+  if (droneHits.length > 0) {
+    const drone = droneHits[0].object.userData.droneRef;
+    if (drone) { selectDrone(drone); clearBaseSelection(); clearGeofenceSelection(); return; }
+  }
+
+  // Bases — pick any mesh with userData.baseRef
+  const baseTargets = [];
+  for (const base of BASES) {
+    if (base.meshGroup) {
+      base.meshGroup.traverse(o => {
+        if (o.userData && o.userData.baseRef) baseTargets.push(o);
+      });
+    }
+  }
+  const baseHits = raycaster.intersectObjects(baseTargets, false);
+  if (baseHits.length > 0) {
+    const base = baseHits[0].object.userData.baseRef;
+    if (base) { selectBase(base); clearSelection(); clearGeofenceSelection(); return; }
+  }
+
+  // Geofences — airport rect + building cylinders
+  const gfTargets = [];
+  scene.traverse(o => {
+    if (o.userData && o.userData.geofenceRef) gfTargets.push(o);
+  });
+  const gfHits = raycaster.intersectObjects(gfTargets, false);
+  if (gfHits.length > 0) {
+    const gf = gfHits[0].object.userData.geofenceRef;
+    if (gf) { selectGeofence(gf); clearSelection(); clearBaseSelection(); return; }
+  }
+
+  clearSelection();
+  clearBaseSelection();
+  clearGeofenceSelection();
+});
+
+function selectDrone(drone) {
+  // Click-toggle: clicking an already-selected drone clears the selection
+  if (state.selectedDroneRef === drone) {
+    state.selectedDroneUID = null;
+    state.selectedDroneRef = null;
+  } else {
+    state.selectedDroneUID = drone.uid;
+    state.selectedDroneRef = drone;
+  }
+  updateLedgerHighlight();
+  updateSelectionHUD();
+}
+function clearSelection() {
+  state.selectedDroneUID = null;
+  state.selectedDroneRef = null;
+  updateLedgerHighlight();
+  updateSelectionHUD();
+}
+function selectBase(base) {
+  state.selectedBaseRef = base;
+  updateBaseHUD();
+}
+function clearBaseSelection() {
+  state.selectedBaseRef = null;
+  updateBaseHUD();
+}
+function selectGeofence(gf) {
+  state.selectedGeofenceRef = gf;
+  updateGeofenceHUD();
+}
+function clearGeofenceSelection() {
+  state.selectedGeofenceRef = null;
+  updateGeofenceHUD();
+}
+
+// ===== Path tracer — hover shows transient, click locks ====================
+// Hover over a drone → faint translucent route preview.
+// Click → locked bright route that persists until clicked again.
+let _tracerLine = null;
+let _hoverTracerLine = null;
+function _buildTracerGeometry(d) {
+  const pts = [new THREE.Vector3(d.x, d.y + 6, d.z)];
+  for (let i = Math.max(0, d._waypointIdx); i < d._plan.length; i++) {
+    const wp = d._plan[i];
+    pts.push(new THREE.Vector3(wp.x, (wp.alt || d.cruiseAlt || 200) + 6, wp.y));
+  }
+  return pts;
+}
+function updateTracer() {
+  // Locked (selected) tracer — bright, fully opaque
+  const sel = state.selectedDroneRef;
+  if (sel && sel._plan && sel._plan.length > 0 && !sel._removed) {
+    const pts = _buildTracerGeometry(sel);
+    if (!_tracerLine) {
+      const mat = new THREE.LineDashedMaterial({
+        color: 0xff8a00, transparent: true, opacity: 0.92,
+        dashSize: 22, gapSize: 12, linewidth: 2
+      });
+      _tracerLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      _tracerLine.computeLineDistances();
+      scene.add(_tracerLine);
+    } else {
+      _tracerLine.geometry.dispose();
+      _tracerLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      _tracerLine.computeLineDistances();
+      _tracerLine.visible = true;
+    }
+  } else if (_tracerLine) {
+    _tracerLine.visible = false;
+  }
+
+  // Hover tracer — faint preview, only when hovered drone ≠ selected drone
+  const hov = state.hoveredDroneRef;
+  if (hov && hov !== sel && hov._plan && hov._plan.length > 0 && !hov._removed) {
+    const pts = _buildTracerGeometry(hov);
+    if (!_hoverTracerLine) {
+      const mat = new THREE.LineDashedMaterial({
+        color: 0xffd23f, transparent: true, opacity: 0.45,
+        dashSize: 16, gapSize: 14, linewidth: 1
+      });
+      _hoverTracerLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+      _hoverTracerLine.computeLineDistances();
+      scene.add(_hoverTracerLine);
+    } else {
+      _hoverTracerLine.geometry.dispose();
+      _hoverTracerLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      _hoverTracerLine.computeLineDistances();
+      _hoverTracerLine.visible = true;
+    }
+  } else if (_hoverTracerLine) {
+    _hoverTracerLine.visible = false;
+  }
+}
+function updateGeofenceHUD() {
+  const el = document.getElementById('geofenceHud');
+  if (!el) return;
+  const gf = state.selectedGeofenceRef;
+  if (!gf) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const typeLabel = (gf.type === 'AIRPORT')    ? 'CONTROLLED AIRSPACE (CLASS C)'
+                  : (gf.type === 'BUILDING')   ? 'BUILDING · NO-FLY ZONE'
+                  : (gf.type === 'RECREATION') ? 'NOISE-SENSITIVE · NO-FLY'
+                  : 'GEOFENCE';
+  const shape = gf.shape === 'rect'
+    ? `rect ${(gf.maxX - gf.minX).toFixed(0)}×${(gf.maxY - gf.minY).toFixed(0)} ft`
+    : `circle r=${gf.r.toFixed(0)} ft`;
+  const ht = gf.height ? `${gf.height} ft` : '—';
+  const ceiling = gf.ceilingFt ? `${gf.ceilingFt} ft AGL` : '—';
+  el.innerHTML = `
+    <div class="gf-hud-title">${gf.id}</div>
+    <div class="gf-hud-name">${gf.name}</div>
+    <div class="gf-hud-type">${typeLabel}</div>
+    <div class="gf-hud-row"><span>Footprint</span><span>${shape}</span></div>
+    <div class="gf-hud-row"><span>Structure height</span><span>${ht}</span></div>
+    <div class="gf-hud-row"><span>Geofence ceiling</span><span>${ceiling}</span></div>
+    <div class="gf-hud-row"><span>Severity</span><span>${gf.severity || 'STD'}</span></div>
+    <div class="gf-hud-foot">Patent §VIII · Dynamic Deconfliction · 4D Volume</div>
+  `;
+}
+
+function updateLedgerHighlight() {
+  const uid = state.selectedDroneUID;
+  const entries = $log.querySelectorAll('.log-entry');
+  for (const el of entries) {
+    const matches = uid && (
+      el.getAttribute('data-uid') === uid ||
+      el.getAttribute('data-holder-uid') === uid ||
+      el.getAttribute('data-yielder-uid') === uid
+    );
+    el.classList.toggle('selected', !!matches);
+  }
+}
+
+const $selHud = document.getElementById('selectionHud');
+const $selUid = document.getElementById('selUid');
+const $selOperator = document.getElementById('selOperator');
+const $selTier = document.getElementById('selTier');
+const $selPeckTag = document.getElementById('selPeckTag');
+const $selOrigin = document.getElementById('selOrigin');
+const $selDest = document.getElementById('selDest');
+const $selState = document.getElementById('selState');
+
+function updateSelectionHUD() {
+  const d = state.selectedDroneRef;
+  if (!d) {
+    $selHud.classList.remove('visible');
+    return;
+  }
+  $selHud.classList.add('visible');
+  $selUid.textContent = d.uid;
+  $selOperator.textContent = d.brandInfo.name + (d.isTPO ? ' · TPO' : '');
+  $selTier.textContent = d.tier.id + ' · ' + d.tier.name;
+  $selPeckTag.textContent = d.tagShort;
+  $selOrigin.textContent = d.originBase.id;
+  $selDest.textContent = `(${d.destination.x.toFixed(0)}, ${d.destination.y.toFixed(0)})`;
+  $selState.textContent = d.state;
+}
+
+// ===== Conflict alert HUD ==================================================
+const $conflictHud = document.getElementById('conflictHud');
+const $chList = document.getElementById('chList');
+
+function updateConflictHUD() {
+  if (ACTIVE_CONFLICTS.length === 0) {
+    $conflictHud.classList.remove('visible');
+    return;
+  }
+  $conflictHud.classList.add('visible');
+  // Build entries (newest first)
+  const sorted = [...ACTIVE_CONFLICTS].sort((x, y) => y.createdAt - x.createdAt);
+  let html = '';
+  for (const c of sorted) {
+    const aColor = '#' + c.a.brandInfo.color.toString(16).padStart(6, '0');
+    const bColor = '#' + c.b.brandInfo.color.toString(16).padStart(6, '0');
+    const elapsed = Math.max(0, (state.simTimeMs - c.createdAt) / 1000);
+    html += `
+      <div class="ch-entry">
+        <span class="ch-entry-time">T-${elapsed.toFixed(1)}s</span>
+        <div class="ch-entry-pair">
+          <b style="color:${aColor}">${c.a.uid}</b> <span style="color:#888">[${c.a.tier.id}]</span>
+          <span style="color:#888"> ↔ </span>
+          <b style="color:${bColor}">${c.b.uid}</b> <span style="color:#888">[${c.b.tier.id}]</span>
+        </div>
+        <div class="ch-entry-cause">CAUSE · ${c.cause}</div>
+        <div class="ch-entry-cmd">Registrar issued: ${c.cmdType} → ${c.b.uid}</div>
+      </div>
+    `;
+  }
+  $chList.innerHTML = html;
+}
+
+// ===== Base HUD =============================================================
+const $baseHud = document.getElementById('baseHud');
+const $bhId = document.getElementById('bhId');
+const $bhName = document.getElementById('bhName');
+const $bhAddress = document.getElementById('bhAddress');
+const $bhEnc = document.getElementById('bhEnc');
+const $bhHeight = document.getElementById('bhHeight');
+const $bhCoords = document.getElementById('bhCoords');
+const $bhBlades = document.getElementById('bhBlades');
+const $bhStatus = document.getElementById('bhStatus');
+
+function updateBaseHUD() {
+  const b = state.selectedBaseRef;
+  if (!b) {
+    $baseHud.classList.remove('visible');
+    return;
+  }
+  $baseHud.classList.add('visible');
+  $bhId.textContent = b.id;
+  $bhName.textContent = b.name;
+  $bhAddress.textContent = b.address;
+  $bhEnc.textContent = b.encNumber;
+  $bhHeight.textContent = b.encHeight + ' ft (rooftop AGL)';
+  $bhCoords.textContent = `(${b.x.toFixed(0)}, ${b.y.toFixed(0)})`;
+
+  $bhBlades.innerHTML = '';
+  for (const blade of b.blades) {
+    const div = document.createElement('div');
+    const isActive = b.activeBlade && b.activeBlade.id === blade.id;
+    div.className = 'bh-blade' + (isActive ? ' active' : '');
+    div.innerHTML = `
+      <div class="bh-blade-id">${blade.id}</div>
+      <div class="bh-blade-info">
+        <span class="bh-blade-tenant">${blade.tenant}</span>${isActive ? '<span class="bh-blade-active-tag">ACTIVE</span>' : ''}
+        <div class="bh-blade-mission">${blade.mission}</div>
+      </div>
+    `;
+    $bhBlades.appendChild(div);
+  }
+
+  if (b.currentDrone) {
+    $bhStatus.textContent = `MISSION ACTIVE · ${b.currentDrone.uid} · ${b.currentDrone.state}`;
+  } else if (state.simTimeMs - b.lastRecoverAt < TPO_BASE_COOLDOWN_MS) {
+    const sec = ((TPO_BASE_COOLDOWN_MS - (state.simTimeMs - b.lastRecoverAt)) / 1000).toFixed(0);
+    $bhStatus.textContent = `REFUEL/SWAP CYCLE · ${sec}s remaining`;
+  } else {
+    $bhStatus.textContent = 'READY · awaiting next dispatch';
+  }
+}
+
+// ===== Event handlers ======================================================
+document.getElementById('btnPlay').addEventListener('click', () => {
+  state.running = !state.running;
+  document.getElementById('playLabel').textContent = state.running ? 'Pause' : 'Play';
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  for (const d of state.drones) d.dispose();
+  state.drones = [];
+  state.conflicts = [];
+  state.resolves = 0;
+  state.yieldCmdCount = 0;
+  state.ledgerDepth = 0;
+  state.ledger = [];
+  state.simTimeMs = 0;
+  state.lastSpawnAt = 0;
+  state.missionCount = 0;
+  state.missionsCompleted = 0;
+  state.selectedDroneUID = null;
+  state.selectedDroneRef = null;
+  state.selectedBaseRef = null;
+  _lastTPOSpawn = -999999;
+  _lastExtSpawn = -999999;
+  for (const k of Object.keys(LANE_RESERVATIONS)) delete LANE_RESERVATIONS[k];
+  for (const b of BASES) {
+    b.currentDrone = null;
+    b.lastLaunchAt = -999999;
+    b.lastRecoverAt = -999999;
+  }
+  $log.innerHTML = '';
+  updateSelectionHUD();
+  updateBaseHUD();
+  logSystem('Sovereign Node BLADE-FT-RANCH-01 reset · Registrar reissuing flight plans');
+  renderTierList();
+  seedInitial();
+});
+document.getElementById('btnView').addEventListener('click', () => {
+  camera.position.set(CAMERA_HOME.x, CAMERA_HOME.y, CAMERA_HOME.z);
+  controls.target.set(0, 0, 0);
+  controls.update();
+});
+document.getElementById('btnGround').addEventListener('click', () => {
+  // Ground-eye view: low elevation, looking up at mid-airspace
+  camera.position.set(900, 80, 900);
+  controls.target.set(0, 280, 0);
+  controls.update();
+});
+document.getElementById('injectP0').addEventListener('click', injectP0);
+document.querySelectorAll('[data-spawn]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const t = btn.dataset.spawn;
+    if (t === 'P1') injectLCR();
+    else spawnMission(t);
+  });
+});
+
+const $speedSlider = document.getElementById('speedSlider');
+const $speedValue = document.getElementById('speedValue');
+$speedSlider.addEventListener('input', e => {
+  state.speed = parseFloat(e.target.value);
+  $speedValue.textContent = state.speed.toFixed(2) + '×';
+});
+const $spawnSlider = document.getElementById('spawnSlider');
+const $spawnValue = document.getElementById('spawnValue');
+$spawnSlider.addEventListener('input', e => {
+  const sec = parseInt(e.target.value);
+  $spawnValue.textContent = '1/' + sec + 's';
+  CFG.EXTERNAL_SPAWN_INTERVAL_MS = sec * 1000;
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input')) return;
+  if (e.key === ' ')      { e.preventDefault(); document.getElementById('btnPlay').click(); }
+  else if (e.key === 'r' || e.key === 'R') document.getElementById('btnReset').click();
+  else if (e.key === 'v' || e.key === 'V') document.getElementById('btnView').click();
+  else if (e.key === 'g' || e.key === 'G') document.getElementById('btnGround').click();
+  else if (e.key === 'm' || e.key === 'M') injectP0();
+  else if (e.key === 'l' || e.key === 'L') injectLCR();
+});
+
+// ===== Init =================================================================
+onResize();
+logSystem('TPO Beta · Module 1 · Geofences active · NPRM-compliant routing');
+logSystem('Sovereign Node Registrar online · governs ALL traffic in The Low');
+logSystem('Tier hierarchy: P00 POTUS · P0 Manned · P1 LCR · P2 Surveil · P3 LE · P4 Comm · P5 Rec/Sci');
+logSystem('TPO Blades launch P1 LCR ONLY · 4 directional altitudes per tier');
+logSystem('Geofences: KSNA AIRPORT · 6 OC buildings · drones route around · only P0 cleared through');
+renderTierList();
+
+// Hide splash after Three.js boots
+setTimeout(() => {
+  document.getElementById('splash').classList.add('hidden');
+}, 800);
+
+// Seed: light realistic initial traffic — 1 TPO drone, 1 external drone, staggered
+function seedInitial() {
+  setTimeout(() => spawnTPOMission(null), 500);
+  setTimeout(() => spawnExternalMission('AMZ'), 6000);
+  setTimeout(() => spawnExternalMission('WNG'), 14000);
+}
+seedInitial();
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
