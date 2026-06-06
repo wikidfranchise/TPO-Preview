@@ -2375,8 +2375,9 @@ class Drone {
     this.cruiseAlt = this.tier.altCenter;
   }
 
-  _planCorridorRoute() {
-    const ox = this.originBase.x, oy = this.originBase.y;
+  _planCorridorRoute(startPt) {
+    const ox = startPt ? startPt.x : this.originBase.x;
+    const oy = startPt ? startPt.y : this.originBase.y;
     const dx = this.destination.x, dy = this.destination.y;
     const half = AIRSPACE.HALF_WIDTH_FT;
 
@@ -2879,13 +2880,13 @@ class Drone {
         this.x += this._vx * dt;
         this.z += this._vz * dt;
         if (state.simTimeMs - this.stateStartedAt > this.hoverDurationMs) {
-          // Replan the return as a FRESH free-vector route back to base, so it
-          // deconflicts against whatever traffic is in the sky right now —
-          // rather than blindly reversing the outbound plan.
+          // Replan the return as a FRESH free-vector route from the drone's
+          // CURRENT position back to base, deconflicting against live traffic.
           const home = { x: this.originBase.x, y: this.originBase.y };
+          const here = { x: this.x, y: this.z };   // current ground position
           const savedDest = this.destination;
           this.destination = home;
-          const ret = this._planCorridorRoute();
+          const ret = this._planCorridorRoute(here);
           this.destination = savedDest;
           this._plan = ret;
           this._waypointIdx = 0;
@@ -3850,30 +3851,31 @@ function _pathvizUpdate() {
     let t = PATHVIZ.trails.get(d);
     const returning = (d.state === 'RETURNING');
     if (!t) {
-      // Create the persistent line ONCE per drone.
-      const mat = new THREE.LineDashedMaterial({
-        color: d.tier ? d.tier.color : 0xffffff,
-        transparent: true, opacity: 0.9, dashSize: 1e9, gapSize: 0   // solid by default
+      // Create the persistent line ONCE per drone. Start solid (basic material).
+      const mat = new THREE.LineBasicMaterial({
+        color: d.tier ? d.tier.color : 0xffffff, transparent: true, opacity: 0.9
       });
       const geo = new THREE.BufferGeometry();
       const line = new THREE.Line(geo, mat);
       line.frustumCulled = false;
-      t = { line, baseColor: d.tier ? d.tier.color : 0xffffff, sig: '', returning: null };
+      t = { line, baseColor: d.tier ? d.tier.color : 0xffffff, sig: '', returning: false };
       PATHVIZ.trails.set(d, t);
       PATHVIZ.group.add(line);
     }
-    // Switch SOLID (outbound) vs DASHED (return) by adjusting the SAME material
-    // in place — never dispose/recreate the line, which was dropping it.
+    // Swap material in place when direction changes — keep the SAME line object
+    // in the group (recreating it was dropping lines). Solid = LineBasicMaterial
+    // (no dash-distance math, so vertical climb segments can't blank it).
     if (t.returning !== returning) {
-      if (returning) { t.line.material.dashSize = 55; t.line.material.gapSize = 35; }
-      else           { t.line.material.dashSize = 1e9; t.line.material.gapSize = 0; }
-      t.line.material.needsUpdate = true;
+      const col = t.baseColor;
+      const oldMat = t.line.material;
+      t.line.material = returning
+        ? new THREE.LineDashedMaterial({ color: col, transparent: true, opacity: 0.9, dashSize: 50, gapSize: 32 })
+        : new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.9 });
+      oldMat.dispose();
       t.returning = returning;
-      t.sig = '';   // force geometry rebuild + line-distance recompute below
+      t.sig = '';   // force geometry + line-distance rebuild below
     }
-    // Rebuild route geometry whenever the plan changes. Track a signature of
-    // the waypoint coordinates so a same-LENGTH replan (outbound→return) still
-    // triggers a rebuild.
+    // Rebuild route geometry whenever the plan changes (signature of waypoints).
     let sig = d._plan.length + ':';
     for (const wp of d._plan) sig += (wp.x|0) + ',' + (wp.y|0) + ',' + ((wp.alt||0)|0) + ';';
     if (t.sig !== sig) {
@@ -3886,7 +3888,7 @@ function _pathvizUpdate() {
       t.line.geometry.setDrawRange(0, pts.length / 3);
       t.line.geometry.attributes.position.needsUpdate = true;
       t.line.geometry.computeBoundingSphere();
-      t.line.computeLineDistances();   // always — material is dashed-type for both
+      if (t.returning) t.line.computeLineDistances();   // only dashed needs distances
       t.sig = sig;
     }
     // reset to tier color each frame; proximity scan may override below
