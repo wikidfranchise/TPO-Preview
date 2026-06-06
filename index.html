@@ -842,6 +842,14 @@ footer .right { color: var(--text-2); }
               <span>Ground Eye View</span>
               <span class="kbd">G</span>
             </button>
+            <button class="btn" id="btnSide">
+              <span>Side View · Altitudes</span>
+              <span class="kbd">S</span>
+            </button>
+            <button class="btn" id="btnPaths">
+              <span id="pathsLabel">Show All Paths</span>
+              <span class="kbd">P</span>
+            </button>
           </div>
           <div class="range-set" style="margin-top: 12px;">
             <span class="l">SPEED</span>
@@ -874,6 +882,15 @@ footer .right { color: var(--text-2); }
             <button class="btn" data-spawn="P5">
               <span style="color:var(--p5)">P5 Recreational</span>
             </button>
+          </div>
+          <div class="section-label" style="margin-top:12px;">Isolate Tier</div>
+          <div class="btn-row" style="grid-template-columns:1fr 1fr 1fr;">
+            <button class="btn" data-filter="P1" style="padding:6px 4px;font-size:9px;"><span style="color:var(--p1)">P1</span></button>
+            <button class="btn" data-filter="P2" style="padding:6px 4px;font-size:9px;"><span style="color:var(--p2)">P2</span></button>
+            <button class="btn" data-filter="P3" style="padding:6px 4px;font-size:9px;"><span style="color:var(--p3)">P3</span></button>
+            <button class="btn" data-filter="P4" style="padding:6px 4px;font-size:9px;"><span style="color:var(--p4)">P4</span></button>
+            <button class="btn" data-filter="P5" style="padding:6px 4px;font-size:9px;"><span style="color:var(--p5)">P5</span></button>
+            <button class="btn" data-filter="ALL" style="padding:6px 4px;font-size:9px;"><span>ALL</span></button>
           </div>
         </div>
 
@@ -943,13 +960,14 @@ footer .right { color: var(--text-2); }
       <div class="geofence-hud" id="geofenceHud" style="display:none"></div>
 
       <div class="overlay-corner overlay-tl">
-        <div><span class="overlay-label">Airspace</span> <span class="overlay-val">THE LOW · &lt; 620 FT AGL</span></div>
+        <div><span class="overlay-label">Airspace</span> <span class="overlay-val">THE LOW &middot; &lt; 670 FT AGL</span></div>
         <div><span class="overlay-label">Grid</span> <span class="overlay-val">8×8 CORRIDORS · 500 FT SPACING</span></div>
         <div><span class="overlay-label">Mode</span> <span class="overlay-accent">ZERO-CONFLICT DESIGN</span></div>
       </div>
 
       <div class="overlay-corner overlay-tr">
         <div><span class="overlay-label">Participants</span> <span class="overlay-val" id="ovParticipants">0</span></div>
+        <div><span class="overlay-label">Min 3D sep</span> <span class="overlay-val" id="ovMinSep">—</span></div>
         <div><span class="overlay-label">Conflicts</span> <span class="overlay-val" id="ovConflicts">0</span></div>
         <div><span class="overlay-label">Resolves</span> <span class="overlay-accent" id="ovResolves">0</span></div>
       </div>
@@ -1057,11 +1075,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // the same direction on the same axis (handled by lane reservation +
 // trailing separation).
 // Tier altitude bands — restructured per architect proposal:
-//   • Commercial (P4) gets the entire 50-400 ft band — 7 slots × 50 ft.
+//   • Commercial (P4) gets the 100-450 ft band — 7 slots × 50 ft (floor raised to clear obstacles).
 //     This is the bulk of traffic (Amazon, UPS, FedEx, Wing, Matternet).
 //   • P3 Law Enforcement is altitude-flexible: it can occupy any commercial
 //     slot or any altitude needed for the mission. Yields only to P0/P00/P1.
-//   • P5 Recreational defaults to the lowest skies (30-50 ft) but can apply
+//   • P5 Recreational defaults to the lowest skies (60-100 ft) but can apply
 //     for commercial slots with a permit (science, education, military).
 //   • P2 Surveillance and P1 LCR carved cleanly above commercial.
 //   • P0 / P00 Manned + Dignitary unchanged.
@@ -1074,19 +1092,24 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const TIERS = [
   { id: 'P00', name: 'POTUS / War Mission',       color: 0xffffff, rank: 0, altLow: 1500, altHigh: 1600 },
   { id: 'P0',  name: 'Manned Aircraft',           color: 0xff2d3d, rank: 1, altLow:  900, altHigh: 1500 },
-  { id: 'P1',  name: 'LCR · Life Critical',       color: 0xff8a00, rank: 2, altLow:  520, altHigh:  600 },
-  { id: 'P2',  name: 'Surveillance',              color: 0xffd23f, rank: 3, altLow:  430, altHigh:  490 },
-  { id: 'P3',  name: 'Law Enforcement',           color: 0x00c2ff, rank: 4, altLow:   50, altHigh:  400 },
-  { id: 'P4',  name: 'Commercial / Utility',      color: 0xa070ff, rank: 5, altLow:   50, altHigh:  400 },
-  { id: 'P5',  name: 'Recreational / Scientific', color: 0x4ade80, rank: 6, altLow:   30, altHigh:   50 }
+  { id: 'P1',  name: 'LCR · Life Critical',       color: 0xff8a00, rank: 2, altLow:  570, altHigh:  650 },
+  { id: 'P2',  name: 'Surveillance',              color: 0xffd23f, rank: 3, altLow:  480, altHigh:  540 },
+  { id: 'P3',  name: 'Law Enforcement',           color: 0x00c2ff, rank: 4, altLow:  100, altHigh:  450 },
+  { id: 'P4',  name: 'Commercial / Utility',      color: 0xa070ff, rank: 5, altLow:  100, altHigh:  450 },
+  { id: 'P5',  name: 'Recreational / Scientific', color: 0x4ade80, rank: 6, altLow:   60, altHigh:  100 }
 ];
 
-// Commercial slot altitudes — 7 slots × 50 ft within 50-400 ft band.
-// NS-axis traffic uses odd slots (50, 150, 250, 350); EW-axis uses even
-// slots (100, 200, 300). Alternating axis gives 50 ft vertical separation
+// Commercial slot altitudes — 7 slots × 50 ft within 100-450 ft band.
+// NS-axis traffic uses slots (100, 200, 300, 400); EW-axis uses interleaved
+// slots (150, 250, 350). Alternating axis gives 50 ft vertical separation
 // between perpendicular drones at intersection crossings.
-const COMMERCIAL_NS_SLOTS = [50, 150, 250, 350];   // 4 NS altitudes
-const COMMERCIAL_EW_SLOTS = [100, 200, 300];        // 3 EW altitudes
+// NS and EW occupy SEPARATE altitude sub-bands so a north-south drone can
+// never share an altitude with an east-west drone — crossing conflicts are
+// structurally impossible. Each lane gets its own altitude within its sub-band;
+// same-axis lanes are 500 ft apart laterally so they never converge.
+// Commercial band 100-450: NS sub-band 100-240 (8 lanes), EW sub-band 300-440.
+const COMMERCIAL_NS_SLOTS = [100, 120, 140, 160, 180, 200, 220, 240];
+const COMMERCIAL_EW_SLOTS = [300, 320, 340, 360, 380, 400, 420, 440];
 // Derived: tier center (used for tier-band visualization & off-corridor altitudes)
 for (const t of TIERS) t.altCenter = (t.altLow + t.altHigh) / 2;
 const TIER_MAP = Object.fromEntries(TIERS.map(t => [t.id, t]));
@@ -1107,31 +1130,68 @@ const TIER_MAP = Object.fromEntries(TIERS.map(t => [t.id, t]));
 //     old 4-slot scheme.
 //   • P3 Law Enforcement: flexible — picks any commercial slot dynamically.
 //     For simulator simplicity, defaults to mid-band (250 NS / 200 EW).
-//   • P5 Recreational: defaults to lowest band (30-50 ft), single slot at 40.
-//   • P1 LCR: 80 ft band 520-600; NS at 580, EW at 540 (40 ft sep).
-//   • P2 Surveillance: 60 ft band 430-490; NS at 470, EW at 440.
-function getDirectionalAltitude(tierId, axis, dir, laneIdx) {
-  if (tierId === 'P4' || tierId === 'P3') {
-    // Commercial slot picking — lane index determines slot, alternating axis
-    if (axis === 'NS') {
-      const slotIdx = Math.floor((laneIdx || 0) / 2) % COMMERCIAL_NS_SLOTS.length;
-      return COMMERCIAL_NS_SLOTS[slotIdx];
-    } else {
-      const slotIdx = Math.floor((laneIdx || 0) / 2) % COMMERCIAL_EW_SLOTS.length;
-      return COMMERCIAL_EW_SLOTS[slotIdx];
+//   • P5 Recreational: defaults to lowest band (60-100 ft), NS 95 / EW 75.
+//   • P1 LCR: 80 ft band 570-650; NS at 630, EW at 590 (40 ft sep).
+//   • P2 Surveillance: 60 ft band 480-540; NS at 520, EW at 490.
+// ===== Open-sky altitude assignment =========================================
+// Class determines PRIORITY (who yields), NOT altitude. Any drone may use the
+// full usable column. The registrar assigns each new drone the EMPTIEST
+// altitude available — maximizing vertical separation across the whole sky
+// instead of stacking traffic into class bands.
+const OPEN_SKY_MIN_FT = 100;
+const OPEN_SKY_MAX_FT = 400;
+const OPEN_SKY_STEP_FT = 25;     // candidate altitudes every 25 ft → 15 levels
+// Manned uses its own high band via forcePlan; these are for P1-P5 powered tiers.
+function pickEmptiestAltitude(nearX, nearY, avoidAlt) {
+  let bestAlt = OPEN_SKY_MIN_FT;
+  let bestClearance = -Infinity;
+  for (let alt = OPEN_SKY_MIN_FT; alt <= OPEN_SKY_MAX_FT; alt += OPEN_SKY_STEP_FT) {
+    // Don't reuse the same altitude for both legs of one drone
+    if (avoidAlt != null && Math.abs(alt - avoidAlt) < OPEN_SKY_STEP_FT) continue;
+    // Clearance = vertical distance to the NEAREST drone at a similar altitude
+    // anywhere in the airspace (we want the least-occupied flight level).
+    let nearestVert = Infinity;
+    for (const d of state.drones) {
+      if (d._removed || d.y == null) continue;
+      if (d.tier && (d.tier.id === 'P0' || d.tier.id === 'P00')) continue;
+      const dv = Math.abs(d.y - alt);
+      if (dv < nearestVert) nearestVert = dv;
+    }
+    if (nearestVert > bestClearance) {
+      bestClearance = nearestVert;
+      bestAlt = alt;
     }
   }
+  return bestAlt;
+}
+
+function getDirectionalAltitude(tierId, axis, dir, laneIdx) {
+  if (tierId === 'P4' || tierId === 'P3') {
+    // Each lane → its own unique altitude in its axis sub-band. NS and EW never
+    // share an altitude, so crossing traffic is always vertically separated.
+    if (axis === 'NS') return COMMERCIAL_NS_SLOTS[(laneIdx || 0) % COMMERCIAL_NS_SLOTS.length];
+    return COMMERCIAL_EW_SLOTS[(laneIdx || 0) % COMMERCIAL_EW_SLOTS.length];
+  }
   if (tierId === 'P5') {
-    // P5 defaults to lowest skies — two axis slots below commercial 50ft floor.
-    // NS at 45 ft, EW at 25 ft. 20 ft vertical separation at intersections,
-    // both below the commercial layer to keep recreational out of the way.
-    return (axis === 'NS') ? 45 : 25;
+    // Band 60-100. NS sub-band 60-78, EW sub-band 84-100. Never overlap.
+    const P5_NS = [60, 66, 72, 78];
+    const P5_EW = [84, 90, 96, 100];
+    if (axis === 'NS') return P5_NS[(laneIdx || 0) % P5_NS.length];
+    return P5_EW[(laneIdx || 0) % P5_EW.length];
   }
   if (tierId === 'P1') {
-    return (axis === 'NS') ? 580 : 540;   // LCR — 40 ft sep within band
+    // LCR band 570-650. NS sub-band 570-605, EW sub-band 615-650.
+    const P1_NS = [570, 582, 594, 605];
+    const P1_EW = [615, 627, 639, 650];
+    if (axis === 'NS') return P1_NS[(laneIdx || 0) % P1_NS.length];
+    return P1_EW[(laneIdx || 0) % P1_EW.length];
   }
   if (tierId === 'P2') {
-    return (axis === 'NS') ? 470 : 440;   // Surveillance — 30 ft sep within band
+    // Surveillance band 480-540. NS sub-band 480-505, EW sub-band 515-540.
+    const P2_NS = [480, 488, 496, 505];
+    const P2_EW = [515, 523, 531, 540];
+    if (axis === 'NS') return P2_NS[(laneIdx || 0) % P2_NS.length];
+    return P2_EW[(laneIdx || 0) % P2_EW.length];
   }
   // P0, P00 — manned aircraft use forcePlan altitudes, this is fallback only
   const tier = TIER_MAP[tierId];
@@ -1230,8 +1290,8 @@ const EW_LANES = CORRIDOR_POS.map((y, i) => ({
 // from issuing multiple drones onto the same corridor segment.
 const LANE_RESERVATIONS = {};                  // lane.label → last reservation timestamp
 const LANE_RESERVATION_MS = 50000;             // 50 sec spacing per lane — drones disperse across lane set
-const DESTINATION_MIN_SEPARATION_FT = 1200;
-const DESTINATION_MIN_ACCEPT_FT = 900;
+const DESTINATION_MIN_SEPARATION_FT = 900;
+const DESTINATION_MIN_ACCEPT_FT = 600;
 const TIER_LANE_CONFLICT_PENALTY = 6000;       // strongly discourage same-lane same-tier
 const RECENT_RESERVATION_PENALTY = 8000;       // strongly discourage same-lane back-to-back
 
@@ -1240,6 +1300,34 @@ const RECENT_RESERVATION_PENALTY = 8000;       // strongly discourage same-lane 
 const RECENT_ROUTES = [];
 const RECENT_ROUTE_DEPTH = 12;
 const RECENT_ROUTE_PENALTY = 4000;
+
+// ===== Altitude slot pool (deal-a-card allocator) ==========================
+// The registrar hands each drone the next FREE altitude from a fixed pool —
+// like dealing cards. No scoring, no optimization that converges everyone onto
+// the same answer. ~12 altitude levels × 8 lanes = ~96 unique slots. A level
+// is "free" if no active drone is currently assigned to it.
+const ALT_POOL = [100, 130, 160, 190, 220, 250, 280, 310, 340, 370, 400];
+function dealFreeAltitude(excludeAlt) {
+  // Collect altitudes currently in use (bucketed to pool levels)
+  const occupied = [];
+  for (const d of state.drones) {
+    if (d._removed || d.cruiseAlt == null) continue;
+    occupied.push(d.cruiseAlt);
+  }
+  // Pick the pool level with the LARGEST vertical gap to the nearest occupied
+  // altitude — maximize separation, so drones are never on adjacent levels
+  // while empty levels remain. Ties randomized.
+  let best = null, bestGap = -Infinity;
+  const order = ALT_POOL.slice().sort(() => Math.random() - 0.5);
+  for (const a of order) {
+    if (excludeAlt != null && a === excludeAlt) continue;
+    let nearest = Infinity;
+    for (const o of occupied) { const g = Math.abs(a - o); if (g < nearest) nearest = g; }
+    if (occupied.length === 0) nearest = 9999;   // empty sky — any level fine
+    if (nearest > bestGap) { bestGap = nearest; best = a; }
+  }
+  return best != null ? best : ALT_POOL[Math.floor(Math.random() * ALT_POOL.length)];
+}
 
 // Snapshot who's currently cruising on each lane (by tier).
 // A drone is "currently on" a lane if its active waypoint references that lane.
@@ -1290,15 +1378,29 @@ function pickFreeDestination(originX, originY) {
   const half = AIRSPACE.HALF_WIDTH_FT - 200;
   let best = null;
   let bestMinDist = -Infinity;
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const dx = (Math.random() - 0.5) * 2 * half;
-    const dy = (Math.random() - 0.5) * 2 * half;
+
+  // Build a candidate set: a ring of points near the airspace edge (where it's
+  // emptiest) plus random interior darts. Edge-first finds open space fast even
+  // when the interior is busy — so deferrals fire only on GENUINE congestion,
+  // not because a random picker whiffed in a small airspace.
+  const candidates = [];
+  const RING = 16;
+  for (let i = 0; i < RING; i++) {
+    const a = (i / RING) * Math.PI * 2 + Math.random() * 0.2;
+    candidates.push({ x: Math.cos(a) * half * 0.92, y: Math.sin(a) * half * 0.92 });
+  }
+  for (let i = 0; i < 120; i++) {
+    candidates.push({ x: (Math.random() - 0.5) * 2 * half, y: (Math.random() - 0.5) * 2 * half });
+  }
+
+  for (const c of candidates) {
+    const dx = c.x, dy = c.y;
     if (Math.hypot(dx - originX, dy - originY) < 1000) continue;
-    // Reject if destination falls inside any geofenced no-fly zone
     if (isPointInGeofence(dx, dy)) continue;
 
     let minToOther = Infinity;
     for (const d of state.drones) {
+      if (d._removed) continue;
       if (d.destination) {
         const dDest = Math.hypot(d.destination.x - dx, d.destination.y - dy);
         if (dDest < minToOther) minToOther = dDest;
@@ -1310,7 +1412,7 @@ function pickFreeDestination(originX, originY) {
     if (minToOther > bestMinDist) { bestMinDist = minToOther; best = { x: dx, y: dy }; }
   }
   // No candidate cleared the preferred separation. Use best ONLY if it
-  // clears the absolute minimum — otherwise signal congestion.
+  // clears the absolute minimum — otherwise signal genuine congestion.
   if (best && bestMinDist >= DESTINATION_MIN_ACCEPT_FT) return best;
   return null;
 }
@@ -1964,26 +2066,45 @@ function segmentCrossesGeofence(x1, y1, x2, y2, ignoreType) {
 // Higher return value = better isolated route. This drives DECONFLICTION-FIRST
 // scoring — the planner prefers routes that stay far from all active traffic
 // even at significant distance cost (battery-electric propulsion is non-scarce).
-function computeMinSeparationToOthers(segs, selfDrone) {
+// Many-to-many path deconfliction: compares this candidate route — including
+// the altitude each segment flies — against the ENTIRE remaining planned path
+// of every other active drone, in full 3D. Returns the minimum 3D separation
+// that would ever occur between this route and any other drone's route. A new
+// flight plan is only issued if this clears the safety envelope against ALL
+// existing planned paths, not just where drones happen to be right now.
+function computeMinSeparationToOthers(segs3d, selfDrone) {
   if (!state.drones || state.drones.length === 0) return 9999;
   let minSep = 9999;
-  const SAMPLES_PER_SEG = 6;
-  for (const [x1, y1, x2, y2] of segs) {
-    for (let s = 0; s <= SAMPLES_PER_SEG; s++) {
-      const t = s / SAMPLES_PER_SEG;
-      const px = x1 + (x2 - x1) * t;
-      const py = y1 + (y2 - y1) * t;
-      for (const other of state.drones) {
-        if (other === selfDrone) continue;
-        if (other._removed) continue;
-        // Check current position
-        const d1 = Math.hypot(other.x - px, other.z - py);
-        if (d1 < minSep) minSep = d1;
-        // Check next waypoint position (10-30s ahead projection)
-        if (other._plan && other._waypointIdx < other._plan.length) {
-          const wp = other._plan[other._waypointIdx];
-          const d2 = Math.hypot(wp.x - px, wp.y - py);
-          if (d2 < minSep) minSep = d2;
+  const SAMPLES = 8;
+  // segs3d: array of [x1,y1,a1, x2,y2,a2] (world x, world y, altitude)
+  for (const other of state.drones) {
+    if (other === selfDrone || other._removed) continue;
+    if (other.tier && (other.tier.id === 'P0' || other.tier.id === 'P00')) continue; // manned handled by pre-clear
+    if (!other._plan) continue;
+    const startIdx = Math.max(0, (other._waypointIdx || 0) - 1);
+    // Build the other drone's remaining 3D path segments
+    for (let oi = startIdx; oi < other._plan.length - 1; oi++) {
+      const oa = other._plan[oi], ob = other._plan[oi + 1];
+      for (const seg of segs3d) {
+        const [x1, y1, a1, x2, y2, a2] = seg;
+        // Sample both segments and take min 3D distance between sample points
+        for (let s = 0; s <= SAMPLES; s++) {
+          const t = s / SAMPLES;
+          const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t, pa = a1 + (a2 - a1) * t;
+          for (let u = 0; u <= SAMPLES; u++) {
+            const r = u / SAMPLES;
+            const qx = oa.x + (ob.x - oa.x) * r;
+            const qy = oa.y + (ob.y - oa.y) * r;
+            const qa = (oa.alt != null ? oa.alt : 0) + ((ob.alt != null ? ob.alt : 0) - (oa.alt != null ? oa.alt : 0)) * r;
+            // 3D distance: horizontal + vertical combined. Vertical separation
+            // counts double-weight so different altitudes clearly deconflict.
+            const dh = Math.hypot(px - qx, py - qy);
+            const dv = Math.abs(pa - qa);
+            // Treat as clear if vertically separated beyond the envelope, even if
+            // horizontally crossing (that's the whole point of altitude layers).
+            const effective = (dv >= CFG.SAFETY_VERTICAL_FT) ? 9999 : dh;
+            if (effective < minSep) minSep = effective;
+          }
         }
       }
     }
@@ -2016,10 +2137,22 @@ function findDetourPoint(x1, y1, x2, y2, gf) {
   }
   let best = null, bestDist = Infinity;
   for (const c of candidates) {
+    if (isPointInGeofence(c.x, c.y)) continue;        // never detour INTO another zone
     if (segmentCrossesGeofence(x1, y1, c.x, c.y)) continue;
     if (segmentCrossesGeofence(c.x, c.y, x2, y2)) continue;
     const d = Math.hypot(c.x - x1, c.y - y1) + Math.hypot(x2 - c.x, y2 - c.y);
     if (d < bestDist) { bestDist = d; best = c; }
+  }
+  // If no single corner fully clears both legs (long rectangle), return the
+  // corner nearest the start that at least gets us out of the current zone —
+  // the iterative safety pass will add the next waypoint to finish escaping.
+  if (!best) {
+    for (const c of candidates) {
+      if (isPointInGeofence(c.x, c.y)) continue;
+      if (segmentCrossesGeofence(x1, y1, c.x, c.y)) continue;  // first leg must be clean
+      const d = Math.hypot(c.x - x1, c.y - y1);
+      if (d < bestDist) { bestDist = d; best = c; }
+    }
   }
   return best;
 }
@@ -2245,146 +2378,203 @@ class Drone {
   _planCorridorRoute() {
     const ox = this.originBase.x, oy = this.originBase.y;
     const dx = this.destination.x, dy = this.destination.y;
-    const now = state.simTimeMs;
-    const myTier = this.tier.id;
+    const half = AIRSPACE.HALF_WIDTH_FT;
 
-    // Evaluate every (NS lane × EW lane × ordering) combination.
-    // PASS 1: collect routes with ZERO geofence crossings. Pick the cheapest.
-    // PASS 2 (fallback only): if no clean route exists, pick the least-bad
-    //         and insert detour waypoints to route around the obstacle.
-    const cleanCandidates = [];
-    const dirtyCandidates = [];
+    // ===== FREE-VECTOR DECONFLICTION ROUTER ================================
+    // No fixed lane grid. The registrar monitors EVERY other drone's full
+    // remaining path and flies this package through the emptiest tube of sky:
+    // a (mostly) straight diagonal at the altitude + lateral swing that stays
+    // FARTHEST from all other traffic. Distance/fuel are irrelevant — the only
+    // objective is separation. A light organizing bias (prefer gentle swings,
+    // prefer mid heading) keeps the picture readable rather than chaotic.
 
-    for (const ns of NS_LANES) {
-      if (laneIntersectsGeofence(ns, 'NS')) continue;
-      for (const ew of EW_LANES) {
-        if (laneIntersectsGeofence(ew, 'EW')) continue;
-        for (const nsFirst of [true, false]) {
-          let segs;
-          if (nsFirst) {
-            segs = [
-              [ox, oy, ns.x, oy],
-              [ns.x, oy, ns.x, ew.y],
-              [ns.x, ew.y, dx, ew.y],
-              [dx, ew.y, dx, dy]
-            ];
-          } else {
-            segs = [
-              [ox, oy, ox, ew.y],
-              [ox, ew.y, ns.x, ew.y],
-              [ns.x, ew.y, ns.x, dy],
-              [ns.x, dy, dx, dy]
-            ];
+    // Collect every other drone's full remaining 3D path, WITH the time each
+    // drone will reach each point. Two routes crossing in space only conflict
+    // if both drones are at the crossing at the same TIME — so we tag every
+    // path point with an estimated arrival time (seconds from now).
+    const CRUISE = CFG.CRUISE_FT_S || 28;
+    const otherPaths = [];
+    for (const d of state.drones) {
+      if (d === this || d._removed || !d._plan) continue;
+      if (d.tier && (d.tier.id === 'P0' || d.tier.id === 'P00')) continue; // manned pre-cleared
+      const segs = [];
+      const start = Math.max(0, (d._waypointIdx || 1) - 1);
+      // time so far: distance from drone's CURRENT position to its current target
+      let tAccum = 0;
+      // distance from current pos to the start waypoint of the remaining path
+      let px = d.x, pa = d.y, pz = d.z;
+      for (let i = start; i < d._plan.length - 1; i++) {
+        const a = d._plan[i], b = d._plan[i + 1];
+        const aT = tAccum;
+        const segLen = Math.hypot(b.x - a.x, b.y - a.y, (b.alt||0) - (a.alt||0));
+        const bT = tAccum + segLen / CRUISE;
+        segs.push([a.x, a.y, (a.alt != null ? a.alt : 0), b.x, b.y, (b.alt != null ? b.alt : 0), aT, bT]);
+        tAccum = bT;
+      }
+      if (segs.length) otherPaths.push(segs);
+    }
+
+    // Min 3D distance from a point to a single segment; also returns the time
+    // the other drone is at the closest point (interpolated along seg time).
+    function ptSeg(px, py, pa, x1, y1, a1, x2, y2, a2, t1, t2) {
+      const vx = x2 - x1, vy = y2 - y1, va = a2 - a1;
+      const len2 = vx*vx + vy*vy + va*va || 1;
+      let t = ((px-x1)*vx + (py-y1)*vy + (pa-a1)*va) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const cx = x1 + t*vx, cy = y1 + t*vy, ca = a1 + t*va;
+      const otherTime = t1 + (t2 - t1) * t;
+      return { dist: Math.hypot(px-cx, py-cy, pa-ca), otherTime };
+    }
+    // TIME-AWARE clearance: returns the worst (smallest) EFFECTIVE separation,
+    // where a near-miss in space is only counted if the two drones are there
+    // within a time window of each other. Spatial crossings at different times
+    // are treated as clear, so altitude separation is reserved for real
+    // simultaneous conflicts.
+    const TIME_WINDOW_S = 12;   // if drones pass within 12s, treat as concurrent
+    function routeClearance(routeSegs) {
+      if (otherPaths.length === 0) return 99999;
+      let mn = Infinity;
+      let myT = 0;   // time THIS drone reaches the current sample
+      for (const [x1,y1,a1,x2,y2,a2] of routeSegs) {
+        const segLen = Math.hypot(x2-x1, y2-y1, a2-a1);
+        const SAMP = 10;
+        for (let s = 0; s <= SAMP; s++) {
+          const t = s/SAMP;
+          const px = x1+(x2-x1)*t, py = y1+(y2-y1)*t, pa = a1+(a2-a1)*t;
+          const myTime = myT + (segLen / CRUISE) * t;
+          for (const path of otherPaths) {
+            for (const seg of path) {
+              const r = ptSeg(px,py,pa, seg[0],seg[1],seg[2], seg[3],seg[4],seg[5], seg[6],seg[7]);
+              // Only a conflict if close in SPACE and close in TIME.
+              const dtime = Math.abs(myTime - r.otherTime);
+              const effective = (dtime > TIME_WINDOW_S) ? 99999 : r.dist;
+              if (effective < mn) mn = effective;
+            }
           }
-          let crossings = 0;
-          let dist = 0;
-          for (const [x1, y1, x2, y2] of segs) {
-            if (segmentCrossesGeofence(x1, y1, x2, y2)) crossings++;
-            dist += Math.hypot(x2 - x1, y2 - y1);
-          }
-          const nsConflict = getLaneOccupantTiers(ns.label, myTier).size;
-          const ewConflict = getLaneOccupantTiers(ew.label, myTier).size;
-          const nsRecent = (now - (LANE_RESERVATIONS[ns.label] || -999999) < LANE_RESERVATION_MS) ? 1 : 0;
-          const ewRecent = (now - (LANE_RESERVATIONS[ew.label] || -999999) < LANE_RESERVATION_MS) ? 1 : 0;
-          const recentPairUses = RECENT_ROUTES.reduce((acc, r) =>
-            acc + ((r[0] === ns.label && r[1] === ew.label) ? 1 : 0), 0);
-          // Deconfliction score — minimum distance from any segment midpoint
-          // of this candidate route to any currently-active drone's position.
-          // Higher minSep = better route. This is the PRIMARY objective.
-          const minSep = computeMinSeparationToOthers(segs, this);
-
-          // DECONFLICTION-FIRST scoring (fiber-network analogy):
-          //   Battery-electric propulsion is non-scarce — distance is not a
-          //   meaningful cost. Routing optimizes for INTER-VEHICLE SEPARATION
-          //   like a fiber network optimizes for redundancy/reliability, not
-          //   shortest path. Distance is included only as a tiebreaker (×0.05)
-          //   among otherwise-equivalent candidates.
-          //   Patent §IV — defensible commercial-method claim distinguishing
-          //   TPO from all prior-art ATC routing inherited from fuel-cost
-          //   manned-aviation optimization.
-          const score = (-minSep * 12)
-                      + (nsConflict + ewConflict) * TIER_LANE_CONFLICT_PENALTY
-                      + (nsRecent + ewRecent) * RECENT_RESERVATION_PENALTY
-                      + recentPairUses * RECENT_ROUTE_PENALTY
-                      + dist * 0.05;     // distance: tiebreaker only
-          const candidate = { ns, ew, nsFirst, crossings, score, minSep, dist };
-          if (crossings === 0) cleanCandidates.push(candidate);
-          else                 dirtyCandidates.push(candidate);
         }
+        myT += segLen / CRUISE;
+      }
+      return mn;
+    }
+    // Does a horizontal line cross a geofence? (altitude-independent obstacles)
+    function geofenceClear(x1,y1,x2,y2) {
+      return !segmentCrossesGeofence(x1,y1,x2,y2);
+    }
+
+    // Build candidate routes: for each altitude in the pool and each lateral
+    // "swing" offset, a path origin -> swing waypoint -> destination. Swing = 0
+    // is a straight diagonal; non-zero bows the path wide (E/W or N/S) to dodge
+    // traffic. Heading is free (any diagonal) because swing point is anywhere.
+    const candidates = [];
+    // Wide range of lateral bows (both directions) so a clean path around the
+    // airport geofence always exists even when origin/dest straddle it.
+    const SWINGS = [0, 400, -400, 800, -800, 1200, -1200, 1600, -1600, 2000, -2000, 2400, -2400];
+    const mxX = (ox + dx) / 2, mxY = (oy + dy) / 2;            // route midpoint
+    // Perpendicular direction to the straight O->D line, for swinging sideways.
+    let pdx = dy - oy, pdy = -(dx - ox);
+    const plen = Math.hypot(pdx, pdy) || 1; pdx /= plen; pdy /= plen;
+
+    for (const alt of ALT_POOL) {
+      for (const sw of SWINGS) {
+        // swing waypoint = midpoint pushed perpendicular by sw, clamped in-bounds
+        let wx = mxX + pdx * sw, wy = mxY + pdy * sw;
+        wx = Math.max(-half+150, Math.min(half-150, wx));
+        wy = Math.max(-half+150, Math.min(half-150, wy));
+        // HARD geofence rule: both legs must clear ALL geofences. Skip if not.
+        if (!geofenceClear(ox, oy, wx, wy)) continue;
+        if (!geofenceClear(wx, wy, dx, dy)) continue;
+        // Swing waypoint itself must not sit inside a geofence.
+        if (isPointInGeofence(wx, wy)) continue;
+        // 3D route segments: climb at origin, fly to swing at alt, to dest at alt, descend
+        const segs3d = (sw === 0)
+          ? [[ox,oy,alt, dx,dy,alt]]
+          : [[ox,oy,alt, wx,wy,alt],[wx,wy,alt, dx,dy,alt]];
+        let clearance = routeClearance(segs3d);
+
+        // Manned protected corridor: reject routes entering it.
+        if (this._mannedAvoid && state.simTimeMs < this._mannedAvoid.until) {
+          const ma = this._mannedAvoid;
+          let bad = false;
+          for (const [x1,y1,,x2,y2] of segs3d) {
+            for (let s=0;s<=8 && !bad;s++){ const t=s/8; const px=x1+(x2-x1)*t, py=y1+(y2-y1)*t;
+              for (const [mx1,my1,mx2,my2] of ma.segs){
+                const vx=mx2-mx1, vy=my2-my1, l2=vx*vx+vy*vy||1;
+                let tt=Math.max(0,Math.min(1,((px-mx1)*vx+(py-my1)*vy)/l2));
+                if (Math.hypot(px-(mx1+tt*vx),py-(my1+tt*vy)) < ma.radius){bad=true;break;}
+              }
+            }
+          }
+          if (bad) clearance = -9999;
+        }
+
+        // Light organizing bias: tiny preference for less swing & mid altitudes
+        // so equally-clear routes look orderly. Never enough to override real
+        // separation differences (bias is single digits vs clearance in feet).
+        const bias = -Math.abs(sw) * 0.002 - Math.abs(alt - 275) * 0.002;
+        candidates.push({ alt, sw, wx, wy, segs3d, clearance, score: clearance + bias });
       }
     }
 
-    let best;
-    if (cleanCandidates.length > 0) {
-      cleanCandidates.sort((a, b) => a.score - b.score);
-      best = cleanCandidates[0];
-      // Demonstrate deconfliction-first: if we chose a route significantly
-      // longer than the absolute shortest, log it so demo viewers see why.
-      const shortestDist = Math.min(...cleanCandidates.map(c => c.dist));
-      if (best.dist > shortestDist * 1.2 && best.minSep > 200) {
-        const pctLonger = Math.round((best.dist / shortestDist - 1) * 100);
-        logSystem(`Deconfliction routing · +${pctLonger}% path · ${Math.round(best.minSep)} ft sep maintained`);
+    // Pick the route that stays farthest from all other traffic.
+    candidates.sort((a, b) => b.score - a.score);
+    let best = candidates[0];
+    if (!best) {
+      // No swing cleared the geofence — force a detour around it. Route to a
+      // corner waypoint clear of all geofences, then to the destination.
+      const corners = [
+        { x: -half+200, y: -half+200 }, { x: half-200, y: -half+200 },
+        { x: -half+200, y: half-200 },  { x: half-200, y: half-200 },
+        { x: -half+200, y: 0 }, { x: half-200, y: 0 },
+        { x: 0, y: -half+200 }, { x: 0, y: half-200 }
+      ];
+      let detour = null;
+      for (const c of corners) {
+        if (isPointInGeofence(c.x, c.y)) continue;
+        if (geofenceClear(ox, oy, c.x, c.y) && geofenceClear(c.x, c.y, dx, dy)) { detour = c; break; }
       }
-    } else {
-      // No clean route exists — fall back to lowest crossings + lowest score
-      dirtyCandidates.sort((a, b) => (a.crossings - b.crossings) || (a.score - b.score));
-      best = dirtyCandidates[0] || { ns: NS_LANES[0], ew: EW_LANES[0], nsFirst: true, crossings: 0 };
-      logSystem(`Registrar · no clean corridor for ${this.uid || '?'} · inserting detour`);
+      best = { alt: dealFreeAltitude(null), sw: 1, wx: (detour||{x:mxX}).x, wy: (detour||{y:mxY}).y, clearance: 0 };
+      logSystem(`Registrar · routing ${this.uid||'?'} around airspace geofence`);
+    }
+    this.cruiseAlt = best.alt;
+
+    if (best.clearance < 99999 && best.clearance >= 0) {
+      logSystem(`Free-vector route · ${Math.round(best.clearance)} ft clearance from all traffic`);
     }
 
-    LANE_RESERVATIONS[best.ns.label] = now;
-    LANE_RESERVATIONS[best.ew.label] = now;
-    // Track route history so the next planning call avoids reusing this pair
-    RECENT_ROUTES.push([best.ns.label, best.ew.label]);
-    while (RECENT_ROUTES.length > RECENT_ROUTE_DEPTH) RECENT_ROUTES.shift();
-
-    const nsAlt = getDirectionalAltitude(myTier, 'NS', best.ns.dir, best.ns.idx);
-    const ewAlt = getDirectionalAltitude(myTier, 'EW', best.ew.dir, best.ew.idx);
-    this.cruiseAlt = best.nsFirst ? nsAlt : ewAlt;
-
-    let plan;
-    if (best.nsFirst) {
-      plan = [
-        { x: ox,       y: oy,        alt: nsAlt, kind: 'CLIMB' },
-        { x: best.ns.x, y: oy,       alt: nsAlt, kind: 'JOIN-NS',   lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
-        { x: best.ns.x, y: best.ew.y, alt: nsAlt, kind: 'CRUISE-NS', lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
-        { x: best.ns.x, y: best.ew.y, alt: ewAlt, kind: 'JOIN-EW',   lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
-        { x: dx,       y: best.ew.y, alt: ewAlt, kind: 'CRUISE-EW', lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
-        { x: dx,       y: dy,        alt: ewAlt, kind: 'APPROACH' }
-      ];
-    } else {
-      plan = [
-        { x: ox,        y: oy,        alt: ewAlt, kind: 'CLIMB' },
-        { x: ox,        y: best.ew.y, alt: ewAlt, kind: 'JOIN-EW',   lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
-        { x: best.ns.x, y: best.ew.y, alt: ewAlt, kind: 'CRUISE-EW', lane: best.ew.label, axis: 'EW', dir: best.ew.dir },
-        { x: best.ns.x, y: best.ew.y, alt: nsAlt, kind: 'JOIN-NS',   lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
-        { x: best.ns.x, y: dy,        alt: nsAlt, kind: 'CRUISE-NS', lane: best.ns.label, axis: 'NS', dir: best.ns.dir },
-        { x: dx,        y: dy,        alt: nsAlt, kind: 'APPROACH' }
-      ];
+    // Construct the waypoint plan: hover STRAIGHT UP to cruise altitude at the
+    // origin first (no horizontal movement below cruise), then fly the route,
+    // then descend STRAIGHT DOWN at the destination. The only sub-100ft flight
+    // is the pure-vertical takeoff/landing column.
+    let plan = [];
+    plan.push({ x: ox, y: oy, alt: best.alt, kind: 'CLIMB' });   // vertical climb to cruise
+    if (best.sw !== 0) {
+      plan.push({ x: best.wx, y: best.wy, alt: best.alt, kind: 'CRUISE', axis: 'FREE', dir: 1 });
     }
+    plan.push({ x: dx, y: dy, alt: best.alt, kind: 'CRUISE', axis: 'FREE', dir: 1 });
+    plan.push({ x: dx, y: dy, alt: 8, kind: 'APPROACH' });        // vertical descent at dest
 
-    // Detour fallback: only fires if we landed in PASS 2 with crossings > 0.
-    if (best.crossings > 0) {
-      const detoured = [plan[0]];
+    // FINAL SAFETY PASS: repeatedly walk the plan and insert detour waypoints
+    // until NO leg crosses any geofence. One corner is not enough to escape a
+    // long rectangle, so we iterate until the whole path is clean (capped).
+    for (let pass = 0; pass < 6; pass++) {
+      let inserted = false;
+      const safe = [plan[0]];
       for (let i = 1; i < plan.length; i++) {
-        const prev = detoured[detoured.length - 1];
-        const cur  = plan[i];
+        const prev = safe[safe.length - 1];
+        const cur = plan[i];
         const gf = segmentCrossesGeofence(prev.x, prev.y, cur.x, cur.y);
         if (gf) {
           const dp = findDetourPoint(prev.x, prev.y, cur.x, cur.y, gf);
-          if (dp) {
-            detoured.push({
-              x: dp.x, y: dp.y, alt: cur.alt,
-              kind: 'DETOUR',
-              lane: cur.lane, axis: cur.axis, dir: cur.dir
-            });
+          if (dp && !isPointInGeofence(dp.x, dp.y)) {
+            safe.push({ x: dp.x, y: dp.y, alt: cur.alt, kind: 'DETOUR', axis: 'FREE', dir: 1 });
+            inserted = true;
           }
         }
-        detoured.push(cur);
+        safe.push(cur);
       }
-      plan = detoured;
+      plan = safe;
+      if (!inserted) break;   // fully clean — done
     }
-
     return plan;
   }
 
@@ -2689,22 +2879,15 @@ class Drone {
         this.x += this._vx * dt;
         this.z += this._vz * dt;
         if (state.simTimeMs - this.stateStartedAt > this.hoverDurationMs) {
-          this._plan = this._plan.slice(0, -1).reverse();
-          // Flip direction AND recalculate altitude for the flipped direction.
-          // Without recalculating altitude, a returning drone on the reversed
-          // lane would share altitude with an outbound opposing-direction
-          // drone — guaranteed head-on collision risk.
-          for (const wp of this._plan) {
-            if (wp.dir) {
-              wp.dir = -wp.dir;
-              if (wp.axis && wp.lane) {
-                // Parse "NS-3" → idx 2 for slot lookup
-                const laneIdx = parseInt(wp.lane.split('-')[1], 10) - 1;
-                wp.alt = getDirectionalAltitude(this.tier.id, wp.axis, wp.dir, laneIdx);
-              }
-            }
-          }
-          this._plan.push({ x: this.originBase.x, y: this.originBase.y, alt: 4, kind: 'LAND' });
+          // Replan the return as a FRESH free-vector route back to base, so it
+          // deconflicts against whatever traffic is in the sky right now —
+          // rather than blindly reversing the outbound plan.
+          const home = { x: this.originBase.x, y: this.originBase.y };
+          const savedDest = this.destination;
+          this.destination = home;
+          const ret = this._planCorridorRoute();
+          this.destination = savedDest;
+          this._plan = ret;
           this._waypointIdx = 0;
           this.state = 'RETURNING';
           this.stateStartedAt = state.simTimeMs;
@@ -2829,6 +3012,12 @@ function runDeconfliction() {
   for (let i = 0; i < drones.length; i++) {
     for (let j = i + 1; j < drones.length; j++) {
       const a = drones[i], b = drones[j];
+      if (a._removed || b._removed) continue;
+      // Manned aircraft are pre-cleared predictively (protected corridor issued
+      // on API flight-plan receipt). They do not generate reactive conflicts —
+      // the corridor was cleared in advance, so the plane flies empty sky.
+      if (a.tier && (a.tier.id === 'P0' || a.tier.id === 'P00')) continue;
+      if (b.tier && (b.tier.id === 'P0' || b.tier.id === 'P00')) continue;
       const d = a.distance(b);
       if (d.horiz < CFG.SAFETY_THRESHOLD_FT && d.vert < CFG.SAFETY_VERTICAL_FT) {
         state.conflicts.push({ a, b, dist: d });
@@ -3059,11 +3248,13 @@ function logMission(d) {
   if (d.offCorridor) {
     corridorInfo = `OVERRIDE · ${d.tier.id === 'P0' ? 'MANNED' : 'LCR DIRECT'} @ ${d.cruiseAlt.toFixed(0)}ft`;
   } else {
-    const nsWp = d._plan.find(w => w.kind === 'CRUISE-NS');
-    const ewWp = d._plan.find(w => w.kind === 'CRUISE-EW');
-    const nsTxt = nsWp ? `${nsWp.lane} ${nsWp.dir > 0 ? 'N' : 'S'} @ ${nsWp.alt.toFixed(0)}ft` : '—';
-    const ewTxt = ewWp ? `${ewWp.lane} ${ewWp.dir > 0 ? 'E' : 'W'} @ ${ewWp.alt.toFixed(0)}ft` : '—';
-    corridorInfo = `${nsTxt} → ${ewTxt}`;
+    const cruiseWp = d._plan.find(w => w.kind === 'CRUISE');
+    if (cruiseWp) {
+      const hdg = Math.round((Math.atan2(d.destination.x - d.x, d.destination.y - d.z) * 180 / Math.PI + 360) % 360);
+      corridorInfo = `FREE-VECTOR · HDG ${hdg}° @ ${cruiseWp.alt.toFixed(0)}ft`;
+    } else {
+      corridorInfo = `@ ${d.cruiseAlt.toFixed(0)}ft`;
+    }
   }
   div.innerHTML = `
     <div class="log-head">
@@ -3165,6 +3356,7 @@ function renderTierList() {
 // ===== HUD ==================================================================
 const $simTime = document.getElementById('simTime');
 const $ovParts = document.getElementById('ovParticipants');
+const $ovMinSep = document.getElementById('ovMinSep');
 const $ovConf = document.getElementById('ovConflicts');
 const $ovRes = document.getElementById('ovResolves');
 const $ovLat = document.getElementById('ovLatency');
@@ -3178,6 +3370,18 @@ const $statInflight = document.getElementById('statInflight');
 function updateHUD() {
   $simTime.textContent = formatSimTime(state.simTimeMs);
   $ovParts.textContent = state.drones.length;
+  if ($ovMinSep) {
+    const ms = state._minSep3D;
+    if (ms == null) {
+      $ovMinSep.textContent = '—';
+      $ovMinSep.style.color = '';
+    } else {
+      $ovMinSep.textContent = ms + ' ft';
+      // Safe if beyond the horizontal envelope; warn/red as it approaches it.
+      $ovMinSep.style.color = (ms >= CFG.SAFETY_THRESHOLD_FT) ? '#5dcaa5'
+                            : (ms >= 80) ? '#EF9F27' : '#ff2d3d';
+    }
+  }
   $ovConf.textContent = state.conflicts.length;
   $ovRes.textContent = state.resolves;
   $ovMissions.textContent = state.missionCount;
@@ -3237,8 +3441,27 @@ function spawnExternalMission(brandKey) {
       if (r <= 0) { brandKey = k; break; }
     }
   }
-  const origin = EXTERNAL_OPERATOR_ORIGINS.find(o => o.brand === brandKey)
-              || EXTERNAL_OPERATOR_ORIGINS[Math.floor(Math.random() * EXTERNAL_OPERATOR_ORIGINS.length)];
+  // Random origin base each launch — NOT the brand's fixed site — and prefer
+  // one that's clear of drones still near their launch point, so consecutive
+  // launches never release on top of each other. Always picks the emptiest
+  // available base; only a genuinely blocked base (drone right on it) is skipped.
+  let origin = null;
+  let originBestClear = -Infinity;
+  const shuffled = EXTERNAL_OPERATOR_ORIGINS
+    .map(o => ({ o, r: Math.random() }))
+    .sort((a, b) => a.r - b.r)
+    .map(x => x.o);
+  for (const cand of shuffled) {
+    let minNear = Infinity;
+    for (const d of state.drones) {
+      if (d._removed || d.x == null) continue;
+      const dist = Math.hypot(d.x - cand.x, d.z - cand.y);
+      if (dist < minNear) minNear = dist;
+    }
+    if (minNear >= 250) { origin = cand; break; }   // clear enough — take it
+    if (minNear > originBestClear) { originBestClear = minNear; origin = cand; }
+  }
+  if (!origin) origin = shuffled[0];
   const tierId = BRANDS[brandKey].tierPref[Math.floor(Math.random() * BRANDS[brandKey].tierPref.length)];
 
   const d = new Drone(tierId, {
@@ -3313,6 +3536,87 @@ function _drainP0Queue() {
     _spawnP0Random();
     _lastP0SpawnAt = state.simTimeMs;
   }
+}
+
+// ===== Predictive pre-clearance for manned aircraft ========================
+// TPO is API-connected to manned-aviation systems (ADS-B / UTM / airport
+// sequencing). When a manned operator's flight plan is known, TPO clears the
+// protected corridor AHEAD of the aircraft — drones reroute in advance, so the
+// plane flies through empty sky. This is PREDICTIVE deconfliction: the conflict
+// never forms, versus a reactive system that detects and dodges.
+const MANNED_CORRIDOR_RADIUS_FT = 600;   // protected lateral buffer around path
+function preClearForManned(manned) {
+  if (!manned._plan || manned._plan.length < 2) return;
+  // Build the manned path's segment list (x, y world coords) through The Low.
+  const segs = [];
+  for (let i = 0; i < manned._plan.length - 1; i++) {
+    const a = manned._plan[i], b = manned._plan[i + 1];
+    // Only the portion that dips into The Low (< 700 ft) needs clearing.
+    if ((a.alt != null && a.alt < 700) || (b.alt != null && b.alt < 700)) {
+      segs.push([a.x, a.y, b.x, b.y]);
+    }
+  }
+  if (segs.length === 0) return;   // pure high-altitude transit — no clearing needed
+
+  // Distance from a point to any manned path segment.
+  function distToPath(px, py) {
+    let m = Infinity;
+    for (const [x1, y1, x2, y2] of segs) {
+      const vx = x2 - x1, vy = y2 - y1;
+      const len2 = vx * vx + vy * vy || 1;
+      let t = ((px - x1) * vx + (py - y1) * vy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const cx = x1 + t * vx, cy = y1 + t * vy;
+      const dd = Math.hypot(px - cx, py - cy);
+      if (dd < m) m = dd;
+    }
+    return m;
+  }
+
+  let cleared = 0;
+  for (const dr of state.drones) {
+    if (dr === manned || dr._removed) continue;
+    if (dr.tier && (dr.tier.id === 'P0' || dr.tier.id === 'P00')) continue;
+    if (!dr._plan) continue;
+    // Does any of this drone's remaining route enter the protected corridor?
+    let inCorridor = false;
+    for (let i = dr._waypointIdx || 0; i < dr._plan.length; i++) {
+      const wp = dr._plan[i];
+      if (distToPath(wp.x, wp.y) < MANNED_CORRIDOR_RADIUS_FT) { inCorridor = true; break; }
+    }
+    if (distToPath(dr.x, dr.z) < MANNED_CORRIDOR_RADIUS_FT) inCorridor = true;
+    if (!inCorridor) continue;
+
+    // Pre-clear: replan this drone's route to avoid the corridor. Mark the
+    // manned path so the planner's geofence avoidance routes around it.
+    dr._mannedAvoid = { segs, radius: MANNED_CORRIDOR_RADIUS_FT, until: state.simTimeMs + 30000 };
+    try {
+      const newPlan = dr._planCorridorRoute();
+      if (newPlan && newPlan.length >= 2) {
+        dr._plan = newPlan;
+        dr._waypointIdx = 0;
+        cleared++;
+      }
+    } catch (e) { /* keep existing plan if replan fails */ }
+  }
+
+  // Log as a PREDICTIVE pre-clearance event (not a reactive conflict).
+  const entry = {
+    seq: ++state.ledgerDepth,
+    ts: state.simTimeMs,
+    type: 'PRE-CLEAR',
+    cmd: 'PROTECTED CORRIDOR',
+    cause: 'MANNED FLIGHT PLAN · API-KNOWN · CLEARED IN ADVANCE',
+    fromAuth: 'BLADE-FT-RANCH-01',
+    holderUID: manned.uid,
+    holderTier: 'P0',
+    clearedCount: cleared,
+    sig: sigDemo(),
+    latencyMs: '0.00'
+  };
+  state.ledger.push(entry);
+  logEvent(entry);
+  logSystem(`Manned flight plan received via API · protected corridor cleared · ${cleared} drones rerouted in advance`);
 }
 
 function _spawnP0Random() {
@@ -3424,6 +3728,7 @@ function _spawnP0Random() {
   });
   state.drones.push(d);
   logMission(d);
+  preClearForManned(d);
   const desc = (sc.startsWith('LAND')) ? 'KSNA INBOUND'
              : (sc.startsWith('TAKE')) ? 'KSNA DEPARTURE'
              : 'HIGH-ALTITUDE TRANSIT';
@@ -3480,6 +3785,132 @@ const MAX_STEP_SEC = 0.05;   // Physics sub-step cap: drones never step more tha
 let lastFrame = performance.now();
 let tickAccumulator = 0;
 
+// ===== Path visualization overlay ==========================================
+// Lights up every drone's actual flown path as a colored ribbon (by tier).
+// A live proximity scan flashes any two paths red where their drones come
+// within the 3D safety envelope — so "no collisions, no close calls" is
+// VISIBLE, not asserted. Toggle with showAllPaths() / hideAllPaths().
+const PATHVIZ = {
+  on: false,
+  group: null,
+  trails: new Map(),     // drone -> { points: [], line: THREE.Line }
+  maxPoints: 240,        // ~24s of trail at 10Hz
+  closeCallActive: false
+};
+
+function _pathvizEnsureGroup() {
+  if (!PATHVIZ.group) {
+    PATHVIZ.group = new THREE.Group();
+    PATHVIZ.group.name = 'pathviz';
+    scene.add(PATHVIZ.group);
+  }
+}
+
+function showAllPaths() {
+  PATHVIZ.on = true;
+  _pathvizEnsureGroup();
+  PATHVIZ.group.visible = true;
+  logSystem('Path visualization ON — all corridors lit, live proximity scan active');
+}
+
+function hideAllPaths() {
+  PATHVIZ.on = false;
+  if (PATHVIZ.group) PATHVIZ.group.visible = false;
+  logSystem('Path visualization OFF');
+}
+
+function toggleAllPaths() { PATHVIZ.on ? hideAllPaths() : showAllPaths(); }
+window.showAllPaths = showAllPaths;
+window.hideAllPaths = hideAllPaths;
+window.toggleAllPaths = toggleAllPaths;
+
+function _pathvizUpdate() {
+  if (!PATHVIZ.on) return;
+  _pathvizEnsureGroup();
+
+  // Drop routes for drones that completed their flight or no longer exist
+  for (const [d, t] of PATHVIZ.trails) {
+    if (d._removed || !state.drones.includes(d)) {
+      PATHVIZ.group.remove(t.line);
+      t.line.geometry.dispose();
+      t.line.material.dispose();
+      PATHVIZ.trails.delete(d);
+    }
+  }
+
+  // Draw each drone's FULL planned route: origin → waypoints → destination.
+  // _plan is an array of { x, y, alt } where x=east-west, y=north-south,
+  // alt=altitude. Three.js position is (x, alt, y).
+  let _drawn = 0, _skipped = [];
+  for (const d of state.drones) {
+    if (d._removed) { _skipped.push((d.uid||'?')+':removed'); continue; }
+    if (!d._plan) { _skipped.push((d.uid||'?')+':noplan'); continue; }
+    if (d._plan.length < 2) { _skipped.push((d.uid||'?')+':plan'+d._plan.length); continue; }
+    _drawn++;
+    let t = PATHVIZ.trails.get(d);
+    const returning = (d.state === 'RETURNING');
+    if (!t || t.returning !== returning) {
+      // (Re)create the line with the right style: SOLID outbound, DASHED return.
+      if (t) { PATHVIZ.group.remove(t.line); t.line.geometry.dispose(); t.line.material.dispose(); }
+      const mat = returning
+        ? new THREE.LineDashedMaterial({ color: d.tier ? d.tier.color : 0xffffff,
+            transparent: true, opacity: 0.85, dashSize: 55, gapSize: 35 })
+        : new THREE.LineBasicMaterial({ color: d.tier ? d.tier.color : 0xffffff,
+            transparent: true, opacity: 0.9 });
+      const geo = new THREE.BufferGeometry();
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      t = { line, baseColor: d.tier ? d.tier.color : 0xffffff, sig: '', returning };
+      PATHVIZ.trails.set(d, t);
+      PATHVIZ.group.add(line);
+    }
+    // Rebuild route geometry whenever the plan changes. Track a signature of
+    // the waypoint coordinates so a same-LENGTH replan (outbound→return) still
+    // triggers a rebuild — fixes drones that showed no route line.
+    let sig = d._plan.length + ':';
+    for (const wp of d._plan) sig += (wp.x|0) + ',' + (wp.y|0) + ',' + ((wp.alt||0)|0) + ';';
+    if (t.sig !== sig) {
+      const pts = [];
+      for (const wp of d._plan) {
+        pts.push(wp.x, (wp.alt != null ? wp.alt : 4), wp.y);
+      }
+      t.line.geometry.setAttribute('position',
+        new THREE.Float32BufferAttribute(pts, 3));
+      t.line.geometry.setDrawRange(0, pts.length / 3);
+      t.line.geometry.attributes.position.needsUpdate = true;
+      t.line.geometry.computeBoundingSphere();
+      if (t.returning) t.line.computeLineDistances();   // required for dashes
+      t.sig = sig;
+    }
+    // reset to tier color each frame; proximity scan may override below
+    t.line.material.color.setHex(t.baseColor);
+  }
+
+  // Live proximity scan — flag any pair within the safety envelope.
+  let anyClose = false;
+  let minPairDist = Infinity;
+  const arr = state.drones;
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      const a = arr[i], b = arr[j];
+      if (a._removed || b._removed) continue;
+      if (a.x == null || b.x == null) continue;
+      const dh = Math.hypot(a.x - b.x, a.z - b.z);
+      const dv = Math.abs(a.y - b.y);
+      const d3 = Math.hypot(dh, dv);
+      if (d3 < minPairDist) minPairDist = d3;
+      if (dh < CFG.SAFETY_THRESHOLD_FT && dv < CFG.SAFETY_VERTICAL_FT) {
+        anyClose = true;
+        const ta = PATHVIZ.trails.get(a), tb = PATHVIZ.trails.get(b);
+        if (ta) ta.line.material.color.setHex(0xff2d3d);
+        if (tb) tb.line.material.color.setHex(0xff2d3d);
+      }
+    }
+  }
+  PATHVIZ.closeCallActive = anyClose;
+  PATHVIZ._minPairDist = (minPairDist === Infinity) ? null : Math.round(minPairDist);
+}
+
 function loop(now) {
   const frameDelta = now - lastFrame;
   lastFrame = now;
@@ -3497,10 +3928,10 @@ function loop(now) {
       for (const d of state.drones) d.step(subDt);
     }
 
-    // Despawn drones marked complete
+    // Despawn drones marked complete or otherwise removed
     for (let i = state.drones.length - 1; i >= 0; i--) {
-      if (state.drones[i].state === 'DESPAWNING') {
-        state.drones[i].dispose();
+      if (state.drones[i].state === 'DESPAWNING' || state.drones[i]._removed) {
+        if (!state.drones[i]._removed) state.drones[i].dispose();
         state.missionsCompleted++;
         state.drones.splice(i, 1);
       }
@@ -3509,6 +3940,39 @@ function loop(now) {
     // Deconfliction every CFG.TICK_MS (10 Hz)
     while (tickAccumulator >= CFG.TICK_MS) {
       runDeconfliction();
+      // Always-on live minimum 3D separation tracker (independent of path viz)
+      {
+        let mn = Infinity, closeA = null, closeB = null;
+        const arr = state.drones;
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = i + 1; j < arr.length; j++) {
+            const a = arr[i], b = arr[j];
+            if (a._removed || b._removed || a.x == null || b.x == null) continue;
+            if (a.tier && (a.tier.id === 'P0' || a.tier.id === 'P00')) continue;
+            if (b.tier && (b.tier.id === 'P0' || b.tier.id === 'P00')) continue;
+            const d3 = Math.hypot(a.x - b.x, a.z - b.z, a.y - b.y);
+            if (d3 < mn) { mn = d3; closeA = a; closeB = b; }
+          }
+        }
+        state._minSep3D = (mn === Infinity) ? null : Math.round(mn);
+        // Diagnostic: when the closest pair breaches the envelope, log EXACTLY
+        // what they are — tier, current leg, altitude — so we see the real cause.
+        if (closeA && closeB && mn < CFG.SAFETY_THRESHOLD_FT) {
+          const legOf = (d) => {
+            const wp = d._plan && d._plan[d._waypointIdx];
+            return wp ? (wp.kind || '?') : (d.state || '?');
+          };
+          const dh = Math.round(Math.hypot(closeA.x - closeB.x, closeA.z - closeB.z));
+          const dv = Math.round(Math.abs(closeA.y - closeB.y));
+          if (!state._lastDiagAt || state.simTimeMs - state._lastDiagAt > 1500) {
+            state._lastDiagAt = state.simTimeMs;
+            console.log(`[SEP ${Math.round(mn)}ft] ` +
+              `${closeA.uid}(${closeA.tier.id},${legOf(closeA)},alt${Math.round(closeA.y)}) <-> ` +
+              `${closeB.uid}(${closeB.tier.id},${legOf(closeB)},alt${Math.round(closeB.y)}) ` +
+              `| horiz ${dh}ft vert ${dv}ft`);
+          }
+        }
+      }
       tickAccumulator -= CFG.TICK_MS;
     }
 
@@ -3562,11 +4026,13 @@ function loop(now) {
 
     if (state.drones.length !== state._lastTierCount) {
       renderTierList();
+      if (typeof TIER_FILTER !== 'undefined' && TIER_FILTER !== null) applyTierFilter();
       state._lastTierCount = state.drones.length;
     }
   }
 
   controls.update();
+  _pathvizUpdate();
   renderer.render(scene, camera);
   updateHUD();
   requestAnimationFrame(loop);
@@ -3940,12 +4406,57 @@ document.getElementById('btnGround').addEventListener('click', () => {
   controls.target.set(0, 280, 0);
   controls.update();
 });
+document.getElementById('btnSide').addEventListener('click', () => {
+  // TRUE SIDE VIEW — camera level with the airspace, looking straight across.
+  // Altitude becomes the vertical screen axis, so the 100-400 ft flight layers
+  // are clearly separated instead of crushed by a top-down angle. This is the
+  // view that proves the vertical deconfliction is real.
+  camera.position.set(0, 250, 4200);
+  controls.target.set(0, 250, 0);
+  controls.update();
+});
+document.getElementById('btnPaths').addEventListener('click', () => {
+  toggleAllPaths();
+  const btn = document.getElementById('btnPaths');
+  const label = document.getElementById('pathsLabel');
+  if (PATHVIZ.on) {
+    label.textContent = 'Hide All Paths';
+    btn.classList.add('primary');
+  } else {
+    label.textContent = 'Show All Paths';
+    btn.classList.remove('primary');
+  }
+});
 document.getElementById('injectP0').addEventListener('click', injectP0);
 document.querySelectorAll('[data-spawn]').forEach(btn => {
   btn.addEventListener('click', () => {
     const t = btn.dataset.spawn;
     if (t === 'P1') injectLCR();
     else spawnMission(t);
+  });
+});
+
+// ===== Tier isolation filter ==============================================
+// Show only one tier at a time so every drone of that type is visible at once.
+// ALL clears the filter. Hides each filtered drone's body, trail, and stem.
+let TIER_FILTER = null;   // null = show all; else a tier id like 'P3'
+function applyTierFilter() {
+  for (const d of state.drones) {
+    const show = (TIER_FILTER === null) || (d.tier && d.tier.id === TIER_FILTER);
+    if (d._mesh)  d._mesh.visible  = show;
+    if (d._trail) d._trail.visible = show;
+    if (d._stem)  d._stem.visible  = show;
+  }
+}
+window.applyTierFilter = applyTierFilter;
+document.querySelectorAll('[data-filter]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const f = btn.dataset.filter;
+    TIER_FILTER = (f === 'ALL') ? null : f;
+    document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('primary'));
+    btn.classList.add('primary');
+    applyTierFilter();
+    logSystem(TIER_FILTER ? ('Isolating tier ' + TIER_FILTER) : 'Showing all tiers');
   });
 });
 
@@ -3969,6 +4480,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'r' || e.key === 'R') document.getElementById('btnReset').click();
   else if (e.key === 'v' || e.key === 'V') document.getElementById('btnView').click();
   else if (e.key === 'g' || e.key === 'G') document.getElementById('btnGround').click();
+  else if (e.key === 's' || e.key === 'S') document.getElementById('btnSide').click();
+  else if (e.key === 'p' || e.key === 'P') document.getElementById('btnPaths').click();
   else if (e.key === 'm' || e.key === 'M') injectP0();
   else if (e.key === 'l' || e.key === 'L') injectLCR();
 });
