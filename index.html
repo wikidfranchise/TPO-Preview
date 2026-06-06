@@ -3849,24 +3849,31 @@ function _pathvizUpdate() {
     _drawn++;
     let t = PATHVIZ.trails.get(d);
     const returning = (d.state === 'RETURNING');
-    if (!t || t.returning !== returning) {
-      // (Re)create the line with the right style: SOLID outbound, DASHED return.
-      if (t) { PATHVIZ.group.remove(t.line); t.line.geometry.dispose(); t.line.material.dispose(); }
-      const mat = returning
-        ? new THREE.LineDashedMaterial({ color: d.tier ? d.tier.color : 0xffffff,
-            transparent: true, opacity: 0.85, dashSize: 55, gapSize: 35 })
-        : new THREE.LineBasicMaterial({ color: d.tier ? d.tier.color : 0xffffff,
-            transparent: true, opacity: 0.9 });
+    if (!t) {
+      // Create the persistent line ONCE per drone.
+      const mat = new THREE.LineDashedMaterial({
+        color: d.tier ? d.tier.color : 0xffffff,
+        transparent: true, opacity: 0.9, dashSize: 1e9, gapSize: 0   // solid by default
+      });
       const geo = new THREE.BufferGeometry();
       const line = new THREE.Line(geo, mat);
       line.frustumCulled = false;
-      t = { line, baseColor: d.tier ? d.tier.color : 0xffffff, sig: '', returning };
+      t = { line, baseColor: d.tier ? d.tier.color : 0xffffff, sig: '', returning: null };
       PATHVIZ.trails.set(d, t);
       PATHVIZ.group.add(line);
     }
+    // Switch SOLID (outbound) vs DASHED (return) by adjusting the SAME material
+    // in place — never dispose/recreate the line, which was dropping it.
+    if (t.returning !== returning) {
+      if (returning) { t.line.material.dashSize = 55; t.line.material.gapSize = 35; }
+      else           { t.line.material.dashSize = 1e9; t.line.material.gapSize = 0; }
+      t.line.material.needsUpdate = true;
+      t.returning = returning;
+      t.sig = '';   // force geometry rebuild + line-distance recompute below
+    }
     // Rebuild route geometry whenever the plan changes. Track a signature of
     // the waypoint coordinates so a same-LENGTH replan (outbound→return) still
-    // triggers a rebuild — fixes drones that showed no route line.
+    // triggers a rebuild.
     let sig = d._plan.length + ':';
     for (const wp of d._plan) sig += (wp.x|0) + ',' + (wp.y|0) + ',' + ((wp.alt||0)|0) + ';';
     if (t.sig !== sig) {
@@ -3879,7 +3886,7 @@ function _pathvizUpdate() {
       t.line.geometry.setDrawRange(0, pts.length / 3);
       t.line.geometry.attributes.position.needsUpdate = true;
       t.line.geometry.computeBoundingSphere();
-      if (t.returning) t.line.computeLineDistances();   // required for dashes
+      t.line.computeLineDistances();   // always — material is dashed-type for both
       t.sig = sig;
     }
     // reset to tier color each frame; proximity scan may override below
