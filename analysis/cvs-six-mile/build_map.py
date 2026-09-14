@@ -367,10 +367,30 @@ def fetch_boundaries() -> gpd.GeoDataFrame:
 
 
 def census_json(params: list[tuple[str, str]], timeout: int = 300) -> list[list[str]]:
-    r = session().get(CENSUS_API, params=params, timeout=timeout)
-    r.raise_for_status()
-    data = r.json()
-    return data
+    last_error: Exception | None = None
+    for attempt in range(8):
+        try:
+            r = session().get(
+                CENSUS_API,
+                params=params + [("_", str(time.time_ns()))],
+                timeout=timeout,
+                headers={"Accept": "application/json", "Cache-Control": "no-cache"},
+            )
+            r.raise_for_status()
+            if not r.content.strip():
+                raise RuntimeError(f"Census API returned an empty HTTP {r.status_code} response")
+            data = r.json()
+            if not isinstance(data, list) or not data:
+                raise RuntimeError(f"Unexpected Census API payload: {str(data)[:200]}")
+            return data
+        except Exception as exc:
+            last_error = exc
+            if attempt == 7:
+                break
+            delay = min(2 ** attempt, 20)
+            print(f"Census API retry {attempt + 1}/7 in {delay}s: {exc}")
+            time.sleep(delay)
+    raise RuntimeError(f"Census API failed after 8 attempts: {last_error}")
 
 
 def county_block_population(state_fips: str, county_fips: str) -> pd.DataFrame:
@@ -454,12 +474,12 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
         block_zip = download_block_zip(fips)
         blocks = gpd.read_file(
             f"zip://{block_zip}",
-            columns=["GEOID20", "INTPTLAT20", "INTPTLON20", "POP20"],
+            columns=["GEOID20", "INTPTLAT20", "INTPTLON20"],
             engine="pyogrio",
         )
-        blocks["population"] = (
-            pd.to_numeric(blocks["POP20"], errors="coerce").fillna(0).astype("int64")
-        )
+        pop = fetch_state_population(fips)
+        blocks = blocks.merge(pop, on="GEOID20", how="left")
+        blocks["population"] = blocks["population"].fillna(0).astype("int64")
         x = pd.to_numeric(blocks["INTPTLON20"], errors="coerce").to_numpy()
         y = pd.to_numeric(blocks["INTPTLAT20"], errors="coerce").to_numpy()
         covered = contains_xy(state_coverage, x, y)
@@ -473,6 +493,7 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
         })
         print(f"{code}: {inside:,}/{total:,} people ({100*inside/total:.2f}%)")
         block_zip.unlink(missing_ok=True)
+        (CACHE / f"population-{fips}.parquet").unlink(missing_ok=True)
 
     return pd.DataFrame(rows)
 
