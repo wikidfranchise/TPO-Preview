@@ -2,6 +2,10 @@ name: CVS Six-Mile Coverage
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - analysis/cvs-six-mile/build_map.py
+      - .github/workflows/cvs-six-mile-map.yml
   push:
     branches:
       - analysis/cvs-six-mile-coverage
