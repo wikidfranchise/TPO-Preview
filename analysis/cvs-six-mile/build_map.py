@@ -224,7 +224,7 @@ def scrape_cvs() -> pd.DataFrame:
             if column not in df:
                 df[column] = ""
         df["source_url"] = override
-        df = df.drop_duplicates(subset=["latitude", "longitude"]).reset_index(drop=True)
+        df = df.reset_index(drop=True)
         if len(df) < 8500:
             raise RuntimeError(
                 f"Only {len(df):,} valid unique stores were loaded from CVS_DATA_URL."
@@ -453,11 +453,13 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
 
         block_zip = download_block_zip(fips)
         blocks = gpd.read_file(
-            f"zip://{block_zip}", columns=["GEOID20", "INTPTLAT20", "INTPTLON20"]
+            f"zip://{block_zip}",
+            columns=["GEOID20", "INTPTLAT20", "INTPTLON20", "POP20"],
+            engine="pyogrio",
         )
-        pop = fetch_state_population(fips)
-        blocks = blocks.merge(pop, on="GEOID20", how="left")
-        blocks["population"] = blocks["population"].fillna(0).astype("int64")
+        blocks["population"] = (
+            pd.to_numeric(blocks["POP20"], errors="coerce").fillna(0).astype("int64")
+        )
         x = pd.to_numeric(blocks["INTPTLON20"], errors="coerce").to_numpy()
         y = pd.to_numeric(blocks["INTPTLAT20"], errors="coerce").to_numpy()
         covered = contains_xy(state_coverage, x, y)
@@ -471,7 +473,6 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
         })
         print(f"{code}: {inside:,}/{total:,} people ({100*inside/total:.2f}%)")
         block_zip.unlink(missing_ok=True)
-        (CACHE / f"population-{fips}.parquet").unlink(missing_ok=True)
 
     return pd.DataFrame(rows)
 
