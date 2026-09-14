@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
+from urllib3.util.retry import Retry
+
 import folium
 import geopandas as gpd
 import numpy as np
@@ -65,7 +67,7 @@ FIPS_STATE = {v: k for k, v in STATE_FIPS.items()}
 def session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"})
-    retry = requests.adapters.Retry(
+    retry = Retry(
         total=5, backoff_factor=1.2, status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=("GET", "POST"),
     )
