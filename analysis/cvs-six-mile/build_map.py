@@ -207,16 +207,28 @@ def scrape_cvs() -> pd.DataFrame:
         df = pd.read_csv(override)
         rename = {
             "lat": "latitude", "lng": "longitude", "lon": "longitude",
-            "state_code": "state", "postal_code": "zip", "street_address": "street",
+            "city_name": "city", "state_id": "state", "state_code": "state",
+            "postal_code": "zip", "street_address": "street",
         }
         df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
-        required = {"street", "city", "state", "zip", "latitude", "longitude"}
+        required = {"latitude", "longitude"}
         missing = required - set(df.columns)
         if missing:
             raise RuntimeError("CVS_DATA_URL is missing columns: " + ", ".join(sorted(missing)))
+        df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+        df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+        df = df[
+            df.apply(lambda r: valid_latlon(r["latitude"], r["longitude"]), axis=1)
+        ].copy()
+        for column in ("street", "city", "state", "zip", "store_id"):
+            if column not in df:
+                df[column] = ""
         df["source_url"] = override
-        if "store_id" not in df:
-            df["store_id"] = ""
+        df = df.drop_duplicates(subset=["latitude", "longitude"]).reset_index(drop=True)
+        if len(df) < 8500:
+            raise RuntimeError(
+                f"Only {len(df):,} valid unique stores were loaded from CVS_DATA_URL."
+            )
         df.to_csv(snapshot, index=False)
         return df
 
@@ -554,7 +566,9 @@ def main() -> None:
     summary = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_snapshot_started_utc": started.isoformat(),
-        "store_source": CVS_DIRECTORY,
+        "store_source": os.environ.get("CVS_DATA_URL", CVS_DIRECTORY),
+        "store_snapshot_date": os.environ.get("CVS_DATA_DATE", "live"),
+        "store_source_attribution": os.environ.get("CVS_DATA_ATTRIBUTION", "CVS directory"),
         "store_count": int(len(stores)),
         "radius_miles": 6.0,
         "radius_meters": RADIUS_M,
