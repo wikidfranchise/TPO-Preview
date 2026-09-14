@@ -1,0 +1,64 @@
+name: CVS Six-Mile Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - analysis/cvs-six-mile-coverage
+    paths:
+      - analysis/cvs-six-mile/build_map.py
+      - .github/workflows/cvs-six-mile-map.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    concurrency:
+      group: cvs-six-mile-coverage
+      cancel-in-progress: false
+
+    steps:
+      - name: Check out analysis branch
+        uses: actions/checkout@v4
+        with:
+          ref: analysis/cvs-six-mile-coverage
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install geospatial dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            beautifulsoup4 \
+            folium \
+            geopandas \
+            numpy \
+            pandas \
+            pyarrow \
+            pyogrio \
+            pyproj \
+            requests \
+            shapely
+
+      - name: Build exact national map and coverage report
+        run: python analysis/cvs-six-mile/build_map.py
+
+      - name: Commit generated outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analysis/cvs-six-mile/output
+          if git diff --cached --quiet; then
+            echo "No output changes to commit."
+          else
+            git commit -m "Generate CVS six-mile national coverage map [skip ci]"
+            git push origin HEAD:analysis/cvs-six-mile-coverage
+          fi
