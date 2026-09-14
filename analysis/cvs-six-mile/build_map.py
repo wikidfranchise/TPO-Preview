@@ -372,7 +372,7 @@ def census_json(params: list[tuple[str, str]], timeout: int = 300) -> list[list[
         try:
             r = session().get(
                 CENSUS_API,
-                params=params + [("_", str(time.time_ns()))],
+                params=params,
                 timeout=timeout,
                 headers={"Accept": "application/json", "Cache-Control": "no-cache"},
             )
