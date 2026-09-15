@@ -476,6 +476,7 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
             f"zip://{block_zip}",
             columns=["GEOID20", "INTPTLAT20", "INTPTLON20", "POP20"],
             engine="pyogrio",
+            ignore_geometry=True,
         )
         if "POP20" not in blocks.columns:
             raise RuntimeError(
