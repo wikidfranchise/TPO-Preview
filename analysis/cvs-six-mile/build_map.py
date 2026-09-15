@@ -42,7 +42,7 @@ CVS_DIRECTORY = "https://www.cvs.com/store-locator/cvs-pharmacy-locations"
 CENSUS_GEOCODER = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch"
 STATE_BOUNDARIES = "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip"
 BLOCK_URL = (
-    "https://www2.census.gov/geo/tiger/TIGER2020PL/LAYER/TABBLOCK/2020/"
+    "https://www2.census.gov/geo/tiger/TIGER2020/TABBLOCK20/"
     "tl_2020_{fips}_tabblock20.zip"
 )
 CENSUS_API = "https://api.census.gov/data/2020/dec/pl"
@@ -474,12 +474,17 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
         block_zip = download_block_zip(fips)
         blocks = gpd.read_file(
             f"zip://{block_zip}",
-            columns=["GEOID20", "INTPTLAT20", "INTPTLON20"],
+            columns=["GEOID20", "INTPTLAT20", "INTPTLON20", "POP20"],
             engine="pyogrio",
         )
-        pop = fetch_state_population(fips)
-        blocks = blocks.merge(pop, on="GEOID20", how="left")
-        blocks["population"] = blocks["population"].fillna(0).astype("int64")
+        if "POP20" not in blocks.columns:
+            raise RuntimeError(
+                f"Census block file for {code} did not include the required POP20 field; "
+                f"available fields: {list(blocks.columns)}"
+            )
+        blocks["population"] = (
+            pd.to_numeric(blocks["POP20"], errors="coerce").fillna(0).astype("int64")
+        )
         x = pd.to_numeric(blocks["INTPTLON20"], errors="coerce").to_numpy()
         y = pd.to_numeric(blocks["INTPTLAT20"], errors="coerce").to_numpy()
         covered = contains_xy(state_coverage, x, y)
@@ -493,7 +498,6 @@ def population_coverage(coverage, states: gpd.GeoDataFrame) -> pd.DataFrame:
         })
         print(f"{code}: {inside:,}/{total:,} people ({100*inside/total:.2f}%)")
         block_zip.unlink(missing_ok=True)
-        (CACHE / f"population-{fips}.parquet").unlink(missing_ok=True)
 
     return pd.DataFrame(rows)
 
