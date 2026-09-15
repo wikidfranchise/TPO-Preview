@@ -1,0 +1,21 @@
+{
+  "generated_at_utc": "2026-09-15T17:07:49.423242+00:00",
+  "source_snapshot_started_utc": "2026-09-15T17:06:10.020162+00:00",
+  "store_source": "https://simplemaps.com/static/data/business/1.3/cvs/cvs.csv",
+  "store_snapshot_date": "2026-07-29",
+  "store_source_attribution": "SimpleMaps CVS database, CC BY 4.0",
+  "store_count": 8981,
+  "radius_miles": 6.0,
+  "radius_meters": 9656.064,
+  "distance_method": "WGS84 geodesic circles with 72 vertices per store",
+  "overlap_method": "All store circles dissolved; overlap counted once",
+  "population_method": "2020 Decennial Census P1 population assigned at each Census block internal point",
+  "population_total_2020": 331449281,
+  "population_covered_2020": 267863423,
+  "population_coverage_pct": 80.81581054930695,
+  "land_boundary_source": "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_state_500k.zip",
+  "land_sq_miles": 3606677.879643483,
+  "covered_land_sq_miles": 300970.519974371,
+  "land_coverage_pct": 8.344812872618435,
+  "coordinate_completeness_pct": 100.0
+}
